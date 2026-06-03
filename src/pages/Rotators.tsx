@@ -66,7 +66,8 @@ const DIST_LABELS: Record<string, string> = {
   FALLBACK: 'Fallback',
 };
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const PUBLIC_ORIGIN =
+  import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:3001');
 
 export function Rotators() {
   const [items, setItems] = useState<Rotator[]>([]);
@@ -218,7 +219,8 @@ export function Rotators() {
             ) : items.length === 0 ? (
               <TableRow><TableCell colSpan={8} className="text-center py-12 text-gray-500">Nenhum rotador cadastrado.</TableCell></TableRow>
             ) : items.map((r) => {
-              const fullUrl = `${API_URL}/j/${r.short_code}`;
+              const base = PUBLIC_ORIGIN || (typeof window !== 'undefined' ? window.location.origin : '');
+              const fullUrl = `${base}/j/${r.short_code}`;
               return (
                 <TableRow key={r.id}>
                   <TableCell className="font-medium">{r.name}</TableCell>
