@@ -1,0 +1,104 @@
+import { useEffect, useState } from 'react';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Plus, Trash2, Pencil } from 'lucide-react';
+import { fetcher, poster, putter, deleter } from '@/lib/fetcher';
+
+type Stage = {
+  id: string;
+  name: string;
+  order_index: number;
+  system_default: boolean;
+  created_at: string;
+  conversionEvents?: { id: string; platform: string; event_name: string }[];
+};
+
+const empty: Partial<Stage> = { name: '', order_index: 0 };
+
+export function PurchaseJourney() {
+  const [items, setItems] = useState<Stage[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState<Partial<Stage>>(empty);
+
+  const load = () => {
+    setLoading(true);
+    fetcher('/journey-stages').then(setItems).finally(() => setLoading(false));
+  };
+  useEffect(load, []);
+
+  const save = async () => {
+    if (form.id) await putter(`/journey-stages/${form.id}`, form);
+    else await poster('/journey-stages', { ...form, order_index: items.length });
+    setOpen(false); setForm(empty); load();
+  };
+  const del = async (id: string) => {
+    if (!confirm('Excluir etapa?')) return;
+    await deleter(`/journey-stages/${id}`); load();
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-lg font-bold text-gray-800">Jornada de Compra</h2>
+        <Button onClick={() => { setForm(empty); setOpen(true); }} className="bg-[#0095FF] text-white">
+          <Plus className="w-4 h-4 mr-1" /> Nova Etapa
+        </Button>
+      </div>
+
+      <Card className="border-gray-200 shadow-sm overflow-hidden">
+        <Table>
+          <TableHeader className="bg-gray-50/50">
+            <TableRow>
+              <TableHead>Ordem</TableHead>
+              <TableHead>Nome</TableHead>
+              <TableHead>Eventos</TableHead>
+              <TableHead>Criado em</TableHead>
+              <TableHead className="text-right">Ações</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loading ? (
+              <TableRow><TableCell colSpan={5} className="text-center py-12">Carregando...</TableCell></TableRow>
+            ) : items.length === 0 ? (
+              <TableRow><TableCell colSpan={5} className="text-center py-12 text-gray-500">Nenhuma etapa.</TableCell></TableRow>
+            ) : items.map((s) => (
+              <TableRow key={s.id}>
+                <TableCell>{s.order_index}</TableCell>
+                <TableCell className="font-medium">{s.name}{s.system_default && <span className="ml-2 text-xs text-gray-400">(padrão)</span>}</TableCell>
+                <TableCell>
+                  {s.conversionEvents && s.conversionEvents.length > 0
+                    ? s.conversionEvents.map((e) => `${e.platform}:${e.event_name}`).join(', ')
+                    : '-'}
+                </TableCell>
+                <TableCell>{new Date(s.created_at).toLocaleDateString('pt-BR')}</TableCell>
+                <TableCell className="text-right">
+                  <Button size="sm" variant="ghost" onClick={() => { setForm(s); setOpen(true); }}><Pencil className="w-4 h-4" /></Button>
+                  <Button size="sm" variant="ghost" onClick={() => del(s.id)}><Trash2 className="w-4 h-4 text-red-500" /></Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </Card>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>{form.id ? 'Editar' : 'Nova'} Etapa</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label>Nome</Label><Input value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Ex: Comprou" /></div>
+            <div><Label>Ordem</Label><Input type="number" value={form.order_index ?? 0} onChange={(e) => setForm({ ...form, order_index: parseInt(e.target.value) || 0 })} /></div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
+            <Button onClick={save}>Salvar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

@@ -1,0 +1,203 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Workspace {
+  id                String   @id @default(uuid())
+  name              String
+  meta_pixel_id     String?
+  meta_capi_token   String?
+  google_ads_id     String?
+  webhook_url       String?
+  // uazapi — configurado 1x, reutilizado por todos os números do workspace
+  uazapi_url         String?
+  uazapi_admin_token String?
+  created_at        DateTime @default(now())
+
+  whatsappConnections WhatsappConnection[]
+  leads               Lead[]
+  journeyStages       JourneyStage[]
+  trackableMessages   TrackableMessage[]
+  trackableLinks      TrackableLink[]
+  rotators            Rotator[]
+
+  @@map("workspaces")
+}
+
+model WhatsappConnection {
+  id           String   @id @default(uuid())
+  workspace_id String
+  session_name String   // = nome da instância na uazapi (casa com webhook body.instance)
+  status       String   @default("DISCONNECTED") // CONNECTED | DISCONNECTED | CONNECTING
+  phone_number String?
+  uazapi_token String?  // token da instância retornado pela uazapi no init
+  profile_name String?  // nome do perfil WhatsApp após conectar
+  created_at   DateTime @default(now())
+
+  workspace      Workspace       @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  rotatorTargets RotatorTarget[]
+
+  @@map("whatsapp_connections")
+}
+
+model Lead {
+  id                     String   @id @default(uuid())
+  workspace_id           String
+  phone_number           String
+  name                   String?
+  utm_source             String?
+  utm_medium             String?
+  utm_campaign           String?
+  utm_term               String?
+  utm_content            String?
+  current_journey_stage_id String?
+  // Atribuição fina (Fase 2 — rotador)
+  fbclid                 String?
+  click_ip               String?
+  click_user_agent       String?
+  click_time             DateTime?
+  created_at             DateTime @default(now())
+
+  workspace    Workspace     @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  journeyStage JourneyStage? @relation(fields: [current_journey_stage_id], references: [id])
+  messages     Message[]
+
+  @@unique([workspace_id, phone_number])
+  @@map("leads")
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  lead_id   String
+  direction String   // INBOUND | OUTBOUND
+  content   String
+  timestamp DateTime @default(now())
+
+  lead Lead @relation(fields: [lead_id], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}
+
+model JourneyStage {
+  id             String   @id @default(uuid())
+  workspace_id   String
+  name           String
+  order_index    Int
+  system_default Boolean  @default(false)
+  created_at     DateTime @default(now())
+
+  workspace         Workspace         @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  leads             Lead[]
+  conversionEvents  ConversionEvent[]
+
+  @@map("journey_stages")
+}
+
+model ConversionEvent {
+  id               String   @id @default(uuid())
+  journey_stage_id String
+  platform         String   // META | GOOGLE
+  event_name       String   // Purchase | Lead | ViewContent | etc.
+  value            Float?   // valor padrão do evento (override por lead ao marcar conversão)
+  currency         String   @default("BRL")
+  created_at       DateTime @default(now())
+
+  journeyStage JourneyStage @relation(fields: [journey_stage_id], references: [id], onDelete: Cascade)
+
+  @@map("conversion_events")
+}
+
+model TrackableMessage {
+  id           String   @id @default(uuid())
+  workspace_id String
+  base_text    String
+  utm_source   String?
+  utm_medium   String?
+  utm_campaign String?
+  utm_term     String?
+  utm_content  String?
+  created_at   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+
+  @@map("trackable_messages")
+}
+
+model TrackableLink {
+  id              String   @id @default(uuid())
+  workspace_id    String
+  short_code      String   @unique
+  destination_url String
+  utm_source      String?
+  utm_medium      String?
+  utm_campaign    String?
+  utm_term        String?
+  utm_content     String?
+  created_at      DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+
+  @@map("trackable_links")
+}
+
+model Rotator {
+  id             String   @id @default(uuid())
+  workspace_id   String
+  short_code     String   @unique
+  name           String
+  distribution   String   @default("ROUND_ROBIN") // ROUND_ROBIN | WEIGHTED | FALLBACK
+  prefilled_text String
+  utm_source     String?
+  utm_medium     String?
+  utm_campaign   String?
+  utm_term       String?
+  utm_content    String?
+  rr_counter     Int      @default(0)
+  active         Boolean  @default(true)
+  created_at     DateTime @default(now())
+
+  workspace Workspace       @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  targets   RotatorTarget[]
+  clicks    RotatorClick[]
+
+  @@map("rotators")
+}
+
+model RotatorTarget {
+  id            String  @id @default(uuid())
+  rotator_id    String
+  connection_id String
+  weight        Int     @default(1)
+  priority      Int     @default(0)
+  active        Boolean @default(true)
+
+  rotator    Rotator            @relation(fields: [rotator_id], references: [id], onDelete: Cascade)
+  connection WhatsappConnection @relation(fields: [connection_id], references: [id], onDelete: Cascade)
+
+  @@unique([rotator_id, connection_id])
+  @@map("rotator_targets")
+}
+
+model RotatorClick {
+  id            String    @id @default(uuid())
+  rotator_id    String
+  connection_id String
+  token         String?   @unique
+  fbclid        String?
+  gclid         String?
+  ip_address    String?
+  user_agent    String?
+  lead_id       String?
+  status        String    @default("pending") // pending | matched
+  matched_at    DateTime?
+  created_at    DateTime  @default(now())
+
+  rotator Rotator @relation(fields: [rotator_id], references: [id], onDelete: Cascade)
+
+  @@map("rotator_clicks")
+}

@@ -1,0 +1,125 @@
+import { useEffect, useState } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { fetcher, putter } from '@/lib/fetcher';
+
+type Workspace = {
+  id: string;
+  name: string;
+  meta_pixel_id?: string | null;
+  meta_capi_token?: string | null;
+  google_ads_id?: string | null;
+  webhook_url?: string | null;
+  uazapi_url?: string | null;
+  uazapi_admin_token?: string | null;
+};
+
+export function Settings() {
+  const [ws, setWs] = useState<Workspace | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetcher('/workspace').then(setWs).finally(() => setLoading(false));
+  }, []);
+
+  const update = (k: keyof Workspace, v: string) => setWs((w) => w ? { ...w, [k]: v } : w);
+
+  const save = async () => {
+    if (!ws) return;
+    setSaving(true);
+    await putter('/workspace', ws);
+    setSaving(false);
+    alert('Configurações salvas.');
+  };
+
+  if (loading || !ws) return <div className="text-gray-500">Carregando...</div>;
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Configurações</h1>
+        <p className="text-muted-foreground mt-1">Credenciais do workspace para envio de eventos.</p>
+      </div>
+
+      <Card className="max-w-xl">
+        <CardHeader>
+          <CardTitle>Workspace</CardTitle>
+          <CardDescription>Nome e identificação.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            <Label>Nome</Label>
+            <Input value={ws.name} onChange={(e) => update('name', e.target.value)} />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="max-w-xl">
+        <CardHeader>
+          <CardTitle>uazapi (WhatsApp)</CardTitle>
+          <CardDescription>Configure 1x. Usado por todos os números do workspace.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Server URL</Label>
+            <Input value={ws.uazapi_url || ''} onChange={(e) => update('uazapi_url', e.target.value)} placeholder="https://sua-instancia.uazapi.com" />
+          </div>
+          <div className="space-y-2">
+            <Label>Admin Token</Label>
+            <Input type="password" value={ws.uazapi_admin_token || ''} onChange={(e) => update('uazapi_admin_token', e.target.value)} placeholder="admintoken da sua conta uazapi" />
+            <p className="text-xs text-muted-foreground">Token de administrador do painel uazapi (cria/gerencia instâncias).</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="max-w-xl">
+        <CardHeader>
+          <CardTitle>Meta Conversions API</CardTitle>
+          <CardDescription>Pixel ID + Access Token (Business Settings &gt; Datasets).</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Meta Pixel ID</Label>
+            <Input value={ws.meta_pixel_id || ''} onChange={(e) => update('meta_pixel_id', e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>CAPI Access Token</Label>
+            <Input type="password" value={ws.meta_capi_token || ''} onChange={(e) => update('meta_capi_token', e.target.value)} />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="max-w-xl">
+        <CardHeader>
+          <CardTitle>Google Ads</CardTitle>
+          <CardDescription>Customer ID para offline conversions.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            <Label>Customer ID</Label>
+            <Input value={ws.google_ads_id || ''} onChange={(e) => update('google_ads_id', e.target.value)} placeholder="123-456-7890" />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="max-w-xl">
+        <CardHeader>
+          <CardTitle>Webhook</CardTitle>
+          <CardDescription>URL externa que receberá notificações de novos leads (opcional).</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            <Label>Webhook URL</Label>
+            <Input value={ws.webhook_url || ''} onChange={(e) => update('webhook_url', e.target.value)} />
+          </div>
+        </CardContent>
+        <CardFooter className="border-t pt-6">
+          <Button onClick={save} disabled={saving}>{saving ? 'Salvando...' : 'Salvar tudo'}</Button>
+        </CardFooter>
+      </Card>
+    </div>
+  );
+}
