@@ -232,15 +232,26 @@ export function Rotators() {
               <TableRow><TableCell colSpan={8} className="text-center py-12 text-gray-500">Nenhum rotador cadastrado.</TableCell></TableRow>
             ) : items.map((r) => {
               const base = PUBLIC_ORIGIN || (typeof window !== 'undefined' ? window.location.origin : '');
-              const fullUrl = `${base}/j/${r.short_code}`;
+              const directUrl = `${base}/j/${r.short_code}`;
+              const metaUrl = `${base}/j/chat/${r.short_code}`;
               return (
                 <TableRow key={r.id}>
                   <TableCell className="font-medium">{r.name}</TableCell>
-                  <TableCell>
-                    <code className="text-blue-600 text-xs">{fullUrl}</code>
-                    <Button size="sm" variant="ghost" onClick={() => navigator.clipboard.writeText(fullUrl)}>
-                      <Copy className="w-3 h-3" />
-                    </Button>
+                  <TableCell className="space-y-1">
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-gray-400 w-10 shrink-0">Direto</span>
+                      <code className="text-blue-600 text-xs truncate max-w-[180px]">{directUrl}</code>
+                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => navigator.clipboard.writeText(directUrl)}>
+                        <Copy className="w-3 h-3" />
+                      </Button>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-gray-400 w-10 shrink-0">Meta</span>
+                      <code className="text-green-600 text-xs truncate max-w-[180px]">{metaUrl}</code>
+                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => navigator.clipboard.writeText(metaUrl)}>
+                        <Copy className="w-3 h-3" />
+                      </Button>
+                    </div>
                   </TableCell>
                   <TableCell>
                     <Badge variant="secondary">{DIST_LABELS[r.distribution] || r.distribution}</Badge>
