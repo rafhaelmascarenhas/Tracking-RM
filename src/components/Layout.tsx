@@ -1,27 +1,30 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  MessageSquare, 
+import {
+  LayoutDashboard,
+  MessageSquare,
   Link as LinkIcon,
   Shuffle,
   MessageCircle,
-  Filter, 
-  MousePointerClick, 
-  Code, 
-  Globe, 
-  Users, 
-  FileText, 
-  PieChart, 
-  HelpCircle, 
-  LifeBuoy, 
+  Filter,
+  MousePointerClick,
+  Code,
+  Globe,
+  Users,
+  FileText,
+  PieChart,
+  HelpCircle,
+  LifeBuoy,
   Lightbulb,
-  LogOut 
+  Smartphone,
+  Settings,
+  LogOut
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/numbers', label: 'Números', icon: Smartphone },
   { href: '/conversations', label: 'Conversas', icon: MessageSquare },
   { href: '/links', label: 'Links Rastráveis', icon: LinkIcon },
   { href: '/rotators', label: 'Rotadores de Números', icon: Shuffle },
@@ -36,6 +39,7 @@ const navItems = [
   { href: '/help', label: 'Central de Ajuda', icon: HelpCircle },
   { href: '/support', label: 'Suporte', icon: LifeBuoy },
   { href: '/suggest', label: 'Sugira Funcionalidades', icon: Lightbulb },
+  { href: '/settings', label: 'Configurações', icon: Settings },
 ];
 
 export function Layout() {
