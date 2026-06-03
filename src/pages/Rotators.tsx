@@ -94,11 +94,12 @@ export function Rotators() {
 
   const openNew = () => { setForm(empty); setOpen(true); };
 
-  const openEdit = (r: Rotator) => {
-    const form_targets: TargetEntry[] = [...(r.targets || [])]
-      .sort((a, b) => a.priority - b.priority)
-      .map((t) => ({ connection_id: t.connection_id, weight: t.weight }));
-    setForm({ ...r, form_targets });
+  const openEdit = async (r: Rotator) => {
+    const full = await fetcher(`/rotators/${r.id}`);
+    const form_targets: TargetEntry[] = [...(full.targets || [])]
+      .sort((a: RotatorTarget, b: RotatorTarget) => a.priority - b.priority)
+      .map((t: RotatorTarget) => ({ connection_id: t.connection_id, weight: t.weight }));
+    setForm({ ...full, form_targets });
     setOpen(true);
   };
 
@@ -279,7 +280,7 @@ export function Rotators() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button size="sm" variant="ghost" onClick={() => openEdit(r)}><Pencil className="w-4 h-4" /></Button>
+                    <Button size="sm" variant="outline" onClick={() => openEdit(r)} className="gap-1"><Pencil className="w-3 h-3" /> Editar</Button>
                     <Button size="sm" variant="ghost" onClick={() => del(r.id)}><Trash2 className="w-4 h-4 text-red-500" /></Button>
                   </TableCell>
                 </TableRow>
