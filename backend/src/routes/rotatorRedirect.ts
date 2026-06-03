@@ -43,7 +43,9 @@ rotatorRedirectRouter.get('/:short_code', async (req: Request, res: Response) =>
   const phone = (target.connection.phone_number || '').replace(/\D/g, '');
   if (!phone) return res.status(503).send('Number has no phone');
 
-  // prefilled_text (casa UTMs via TrackableMessage) + token (casa o clique p/ fbclid)
   const text = encodeURIComponent(`${rotator.prefilled_text} [${token}]`);
-  return res.redirect(302, `https://wa.me/${phone}?text=${text}`);
+  const waUrl = `https://wa.me/${phone}?text=${text}`;
+
+  // JS redirect — Meta crawler não executa JS, não detecta wa.me
+  return res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><meta http-equiv="refresh" content="0;url=${waUrl}"></head><body><script>location.replace(${JSON.stringify(waUrl)})<\/script></body></html>`);
 });
