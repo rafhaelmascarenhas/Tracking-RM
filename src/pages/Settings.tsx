@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Check } from 'lucide-react';
 import { fetcher, putter } from '@/lib/fetcher';
 
 type Workspace = {
@@ -20,6 +21,7 @@ export function Settings() {
   const [ws, setWs] = useState<Workspace | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     fetcher('/workspace').then(setWs).finally(() => setLoading(false));
@@ -32,7 +34,8 @@ export function Settings() {
     setSaving(true);
     await putter('/workspace', ws);
     setSaving(false);
-    alert('Configurações salvas.');
+    setSaved(true);
+    setTimeout(() => setSaved(false), 3000);
   };
 
   if (loading || !ws) return <div className="text-gray-500">Carregando...</div>;
@@ -117,7 +120,14 @@ export function Settings() {
           </div>
         </CardContent>
         <CardFooter className="border-t pt-6">
-          <Button onClick={save} disabled={saving}>{saving ? 'Salvando...' : 'Salvar tudo'}</Button>
+          <div className="flex items-center gap-3">
+            <Button onClick={save} disabled={saving}>{saving ? 'Salvando...' : 'Salvar tudo'}</Button>
+            {saved && (
+              <span className="flex items-center gap-1 text-sm text-green-600 font-medium">
+                <Check className="w-4 h-4" /> Salvo!
+              </span>
+            )}
+          </div>
         </CardFooter>
       </Card>
     </div>
