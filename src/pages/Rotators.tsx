@@ -102,15 +102,21 @@ export function Rotators() {
     setOpen(true);
   };
 
+  const redistributeEqual = (targets: TargetEntry[]): TargetEntry[] => {
+    if (targets.length === 0) return targets;
+    const base = Math.floor(100 / targets.length);
+    const remainder = 100 - base * targets.length;
+    return targets.map((t, i) => ({ ...t, weight: i === 0 ? base + remainder : base }));
+  };
+
   const toggleTarget = (id: string) => {
     const cur = form.form_targets;
     const exists = cur.some((t) => t.connection_id === id);
-    setForm({
-      ...form,
-      form_targets: exists
-        ? cur.filter((t) => t.connection_id !== id)
-        : [...cur, { connection_id: id, weight: 1 }],
-    });
+    let next = exists
+      ? cur.filter((t) => t.connection_id !== id)
+      : [...cur, { connection_id: id, weight: 1 }];
+    if (form.distribution === 'WEIGHTED') next = redistributeEqual(next);
+    setForm({ ...form, form_targets: next });
   };
 
   const moveTarget = (idx: number, dir: -1 | 1) => {
@@ -121,16 +127,21 @@ export function Rotators() {
     setForm({ ...form, form_targets: arr });
   };
 
-  const setWeight = (connection_id: string, val: number) => {
+  const setPct = (connection_id: string, val: number) => {
     setForm({
       ...form,
       form_targets: form.form_targets.map((t) =>
-        t.connection_id === connection_id ? { ...t, weight: Math.max(1, val) } : t
+        t.connection_id === connection_id ? { ...t, weight: Math.min(100, Math.max(1, val)) } : t
       ),
     });
   };
 
+  const weightTotal = form.form_targets.reduce((s, t) => s + t.weight, 0);
+
+  const weightError = form.distribution === 'WEIGHTED' && form.form_targets.length > 0 && weightTotal !== 100;
+
   const save = async () => {
+    if (weightError) return;
     const payload = {
       name: form.name,
       distribution: form.distribution,
@@ -312,7 +323,7 @@ export function Rotators() {
                 ))}
               </div>
               {form.distribution === 'WEIGHTED' && (
-                <p className="text-xs text-gray-500 mt-1">Defina o peso de cada número. Peso maior = mais cliques proporcionalmente.</p>
+                <p className="text-xs text-gray-500 mt-1">Defina a % de cada número. Total deve ser exatamente 100%.</p>
               )}
               {form.distribution === 'FALLBACK' && (
                 <p className="text-xs text-gray-500 mt-1">Primeiro número recebe tudo. Próximo entra só se offline. Use ↑↓ para definir prioridade.</p>
@@ -348,14 +359,18 @@ export function Rotators() {
                       </Badge>
 
                       {checked && form.distribution === 'WEIGHTED' && (
-                        <Input
-                          type="number"
-                          min={1}
-                          value={entry!.weight}
-                          onChange={(e) => setWeight(n.id, parseInt(e.target.value) || 1)}
-                          onClick={(e) => e.stopPropagation()}
-                          className="w-16 h-7 text-sm shrink-0"
-                        />
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Input
+                            type="number"
+                            min={1}
+                            max={100}
+                            value={entry!.weight}
+                            onChange={(e) => setPct(n.id, parseInt(e.target.value) || 1)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-16 h-7 text-sm"
+                          />
+                          <span className="text-xs text-gray-500">%</span>
+                        </div>
                       )}
 
                       {checked && form.distribution === 'FALLBACK' && (
@@ -388,6 +403,13 @@ export function Rotators() {
               </div>
             </div>
 
+            {form.distribution === 'WEIGHTED' && form.form_targets.length > 0 && (
+              <div className={`text-xs font-medium flex items-center gap-1 -mt-1 ${weightTotal === 100 ? 'text-green-600' : 'text-red-500'}`}>
+                Total: {weightTotal}%
+                {weightTotal === 100 ? ' ✓' : weightTotal < 100 ? ` — faltam ${100 - weightTotal}%` : ` — excede em ${weightTotal - 100}%`}
+              </div>
+            )}
+
             <div>
               <Label>Mensagem pré-preenchida</Label>
               <Input
@@ -414,7 +436,7 @@ export function Rotators() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-            <Button onClick={save}>Salvar</Button>
+            <Button onClick={save} disabled={!!weightError} title={weightError ? 'Total deve ser 100%' : ''}>Salvar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
