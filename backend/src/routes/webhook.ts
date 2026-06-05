@@ -75,15 +75,21 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
       msg.contextInfo?.entryPointConversionSource || '';
     const isClickToChat = entryPoint === 'click_to_chat_link';
 
+    const tokenInText = text.match(/\[([a-f0-9]{6,10})\]/i)?.[1] || '-';
+    console.log(`[webhook] IN phone=${phone || '-'} inst=${instanceName || '-'} token=${tokenInText} c2c=${isClickToChat} text="${(text || '').slice(0, 40)}"`);
+
     if (!phone || !instanceName) {
-      console.log('[webhook] msg sem phone/instance', JSON.stringify({ phone, instanceName }).slice(0, 200));
+      console.log('[webhook] SKIP sem phone/instance');
       return res.status(200).json({ ok: true, skipped: 'no phone/instance' });
     }
 
     const connection = await prisma.whatsappConnection.findFirst({
       where: { session_name: instanceName },
     });
-    if (!connection) return res.status(200).json({ ok: true, skipped: 'connection not found' });
+    if (!connection) {
+      console.log(`[webhook] SKIP connection não encontrada: inst=${instanceName}`);
+      return res.status(200).json({ ok: true, skipped: 'connection not found' });
+    }
 
     const workspaceId = connection.workspace_id;
 
