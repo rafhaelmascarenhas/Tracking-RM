@@ -13,6 +13,7 @@ model Workspace {
   meta_pixel_id     String?
   meta_capi_token   String?
   google_ads_id     String?
+  gtm_id            String?
   webhook_url       String?
   // uazapi — configurado 1x, reutilizado por todos os números do workspace
   uazapi_url         String?

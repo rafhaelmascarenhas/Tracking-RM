@@ -72,3 +72,36 @@ export async function fireMetaCapi(payload: MetaCapiPayload): Promise<void> {
     throw new Error(`Meta CAPI error: ${err}`);
   }
 }
+
+/** Dispara ViewContent sem phone — usado na landing page do rotador. */
+export async function firePageViewCapi(opts: {
+  pixelId: string;
+  token: string;
+  fbclid?: string | null;
+  clientIp?: string | null;
+  userAgent?: string | null;
+  eventId?: string;
+}): Promise<void> {
+  const { pixelId, token, fbclid, clientIp, userAgent, eventId } = opts;
+  const fbc = fbclid ? `fb.1.${Date.now()}.${fbclid}` : undefined;
+  const userData: Record<string, unknown> = {};
+  if (fbc) userData.fbc = fbc;
+  if (clientIp) userData.client_ip_address = clientIp;
+  if (userAgent) userData.client_user_agent = userAgent;
+
+  const body = {
+    data: [{
+      event_name: 'ViewContent',
+      event_time: Math.floor(Date.now() / 1000),
+      action_source: 'website',
+      ...(eventId ? { event_id: eventId } : {}),
+      user_data: userData,
+    }],
+  };
+
+  const res = await fetch(
+    `https://graph.facebook.com/v19.0/${pixelId}/events?access_token=${token}`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+  );
+  if (!res.ok) console.warn('[CAPI PageView]', await res.text());
+}

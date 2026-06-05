@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
 import { pickTarget } from '../services/rotatorService';
+import { firePageViewCapi } from '../services/metaCapi';
 
 export const rotatorRedirectRouter = Router();
 
@@ -24,11 +25,17 @@ function landingHtml(waUrl: string, opts: {
   title?: string | null;
   cta?: string | null;
   autoRedirect?: boolean;
+  pixelId?: string | null;
+  gtmId?: string | null;
 }): string {
   const title = opts.title || 'Fale com a gente';
   const cta = opts.cta || '💬 Abrir WhatsApp';
-  const auto = opts.autoRedirect !== false; // default true
+  const auto = opts.autoRedirect !== false;
   const SECONDS = 3;
+
+  const gtmHead = opts.gtmId ? `<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','${opts.gtmId}');</script>` : '';
+  const gtmBody = opts.gtmId ? `<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=${opts.gtmId}" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>` : '';
+  const pixelScript = opts.pixelId ? `<script>!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init','${opts.pixelId}');fbq('track','ViewContent');</script><noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=${opts.pixelId}&ev=ViewContent&noscript=1"/></noscript>` : '';
 
   const logoHtml = opts.logo
     ? `<img src="${opts.logo}" alt="Logo" class="logo-img">`
@@ -50,6 +57,8 @@ var t=setInterval(function(){n--;el.textContent=n;if(n<=0){clearInterval(t);loca
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${title}</title>
+${gtmHead}
+${pixelScript}
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f9fafb;font-family:system-ui,-apple-system,sans-serif}
@@ -63,6 +72,7 @@ a:active{transform:scale(.97)}
 </style>
 </head>
 <body>
+${gtmBody}
 <div class="wrap">
   ${logoHtml}
   <h1>${title}</h1>
@@ -77,6 +87,11 @@ ${autoScript}
 async function handleRotator(req: Request, res: Response, short_code: string, forceLanding: boolean) {
   const rotator = await prisma.rotator.findUnique({ where: { short_code } });
   if (!rotator || !rotator.active) return res.status(404).send('Link não encontrado');
+
+  const workspace = await prisma.workspace.findUnique({
+    where: { id: rotator.workspace_id },
+    select: { meta_pixel_id: true, meta_capi_token: true, gtm_id: true },
+  });
 
   const target = await pickTarget(rotator.id);
   if (!target) return res.status(503).send('Nenhum número disponível');
@@ -101,12 +116,26 @@ async function handleRotator(req: Request, res: Response, short_code: string, fo
   const useLanding = forceLanding || rotator.use_landing;
 
   if (useLanding) {
+    // Dispara CAPI ViewContent server-side (best-effort, não bloqueia resposta)
+    if (workspace?.meta_pixel_id && workspace?.meta_capi_token) {
+      firePageViewCapi({
+        pixelId: workspace.meta_pixel_id,
+        token: workspace.meta_capi_token,
+        fbclid: (req.query.fbclid as string) || null,
+        clientIp: (req.headers['x-forwarded-for'] as string) || req.ip || null,
+        userAgent: req.headers['user-agent'] || null,
+        eventId: `lp:${token}`,
+      }).catch((e) => console.warn('[CAPI PageView]', e.message));
+    }
+
     // use_landing=true → usuário clica; use_landing=false + forceLanding → auto-redirect com countdown
     return res.send(landingHtml(waUrl, {
       logo: rotator.landing_logo,
       title: rotator.landing_title,
       cta: rotator.landing_cta,
       autoRedirect: !rotator.use_landing,
+      pixelId: workspace?.meta_pixel_id,
+      gtmId: workspace?.gtm_id,
     }));
   }
 

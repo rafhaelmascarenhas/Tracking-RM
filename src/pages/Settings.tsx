@@ -12,6 +12,7 @@ type Workspace = {
   meta_pixel_id?: string | null;
   meta_capi_token?: string | null;
   google_ads_id?: string | null;
+  gtm_id?: string | null;
   webhook_url?: string | null;
   uazapi_url?: string | null;
   uazapi_admin_token?: string | null;
@@ -80,17 +81,33 @@ export function Settings() {
 
       <Card className="max-w-xl">
         <CardHeader>
-          <CardTitle>Meta Conversions API</CardTitle>
-          <CardDescription>Pixel ID + Access Token (Business Settings &gt; Datasets).</CardDescription>
+          <CardTitle>Meta Pixel + Conversions API</CardTitle>
+          <CardDescription>Pixel ID + Access Token (Business Settings › Datasets). Injetados automaticamente na landing page dos rotadores.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label>Meta Pixel ID</Label>
-            <Input value={ws.meta_pixel_id || ''} onChange={(e) => update('meta_pixel_id', e.target.value)} />
+            <Input value={ws.meta_pixel_id || ''} onChange={(e) => update('meta_pixel_id', e.target.value)} placeholder="123456789012345" />
+            <p className="text-xs text-muted-foreground">Dispara ViewContent client-side na landing page.</p>
           </div>
           <div className="space-y-2">
             <Label>CAPI Access Token</Label>
-            <Input type="password" value={ws.meta_capi_token || ''} onChange={(e) => update('meta_capi_token', e.target.value)} />
+            <Input type="password" value={ws.meta_capi_token || ''} onChange={(e) => update('meta_capi_token', e.target.value)} placeholder="EAAxxxxxxx..." />
+            <p className="text-xs text-muted-foreground">Dispara ViewContent server-side (CAPI) na landing page — mais preciso, não depende do browser.</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="max-w-xl">
+        <CardHeader>
+          <CardTitle>Google Tag Manager</CardTitle>
+          <CardDescription>Container GTM injetado na landing page dos rotadores.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            <Label>GTM Container ID</Label>
+            <Input value={ws.gtm_id || ''} onChange={(e) => update('gtm_id', e.target.value)} placeholder="GTM-XXXXXXX" />
+            <p className="text-xs text-muted-foreground">Formato: GTM-XXXXXXX. Deixe vazio para não usar.</p>
           </div>
         </CardContent>
       </Card>
