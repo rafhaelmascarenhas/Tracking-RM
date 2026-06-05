@@ -5,26 +5,29 @@ import { matchRotatorClick } from '../services/rotatorService';
 
 export const webhookRouter = Router();
 
-// uazapi webhook format:
-// { event, instance, data: { key: { remoteJid, fromMe }, message: { conversation }, pushName } }
+// uazapiGO webhook format:
+// { EventType, instanceName, owner, token, message: { sender, fromMe, isGroup, text/content, ... }, chat: {...} }
+// Eventos: "messages" (mensagem), "messages_update" (recibos), "connection"/"status".
 webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
   try {
-    const body = req.body;
+    const body = req.body ?? {};
 
-    // DEBUG: loga todo payload recebido (remover após confirmar shape do uazapiGO)
-    console.log('[webhook] IN', JSON.stringify(body).slice(0, 800));
+    // EventType é a string confiável. body.event às vezes é objeto (recibos).
+    const eventType: string = typeof body.EventType === 'string'
+      ? body.EventType
+      : typeof body.event === 'string'
+        ? body.event
+        : '';
 
-    // Only process inbound messages
-    const event: string = body?.event || '';
+    const instanceName: string = body.instanceName || body.instance || '';
 
-    // Eventos de conexão: mantém o status do número sincronizado (CONNECTED/DISCONNECTED).
-    if (event.includes('connection')) {
-      const instanceName: string = body?.instance || '';
+    // Evento de conexão: sincroniza status do número.
+    if (eventType.toLowerCase().includes('connection') || eventType.toLowerCase() === 'status') {
       const rawState = String(
-        body?.data?.state ?? body?.data?.status ?? body?.data?.connection ?? ''
+        body?.state ?? body?.status ?? body?.data?.state ?? body?.instance?.status ?? ''
       ).toLowerCase();
-      const ownerPhone = String(body?.data?.owner ?? body?.data?.wid ?? '').replace(/\D/g, '');
-      const connected = rawState === 'connected' || rawState === 'open' || body?.data?.loggedIn === true;
+      const ownerPhone = String(body?.owner ?? body?.data?.owner ?? '').replace(/\D/g, '');
+      const connected = ['connected', 'open'].includes(rawState) || body?.loggedIn === true;
       if (instanceName) {
         await prisma.whatsappConnection.updateMany({
           where: { session_name: instanceName },
@@ -37,59 +40,60 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
       return res.json({ ok: true, handled: 'connection' });
     }
 
-    if (!event.includes('messages')) {
-      return res.json({ ok: true, skipped: true });
+    // Só processa mensagens novas (não recibos messages_update).
+    if (eventType !== 'messages') {
+      return res.json({ ok: true, skipped: eventType || 'unknown' });
     }
 
-    const fromMe: boolean = body?.data?.key?.fromMe ?? false;
+    const msg = body.message ?? body.data?.message ?? {};
+
+    // DEBUG temporário: confirma shape do message do uazapiGO
+    console.log('[webhook] msg', JSON.stringify(msg).slice(0, 500));
+
+    const fromMe: boolean = msg.fromMe ?? body?.event?.IsFromMe ?? body?.data?.key?.fromMe ?? false;
     if (fromMe) return res.json({ ok: true, skipped: 'outbound' });
 
-    const remoteJid: string = body?.data?.key?.remoteJid || '';
-    // Skip group messages
-    if (remoteJid.includes('@g.us')) return res.json({ ok: true, skipped: 'group' });
+    const isGroup: boolean = msg.isGroup ?? body?.event?.IsGroup ?? false;
+    const senderJid: string = msg.sender || msg.chatid || msg.chatId || body?.event?.Sender || body?.data?.key?.remoteJid || '';
+    if (isGroup || senderJid.includes('@g.us')) return res.json({ ok: true, skipped: 'group' });
 
-    const phone = remoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+    const phone = senderJid.replace(/@.*$/, '').replace(/\D/g, '');
 
     const text: string =
-      body?.data?.message?.conversation ||
-      body?.data?.message?.extendedTextMessage?.text ||
-      body?.data?.message?.imageMessage?.caption ||
+      msg.text ||
+      msg.content ||
+      msg.conversation ||
+      msg.caption ||
+      msg.message?.conversation ||
+      msg.message?.extendedTextMessage?.text ||
+      msg.message?.imageMessage?.caption ||
       '';
 
-    const contactName: string = body?.data?.pushName || '';
-    const sessionName: string = body?.instance || '';
+    const contactName: string = msg.senderName || body?.chat?.lead_name || body?.chat?.name || msg.pushName || '';
 
-    if (!phone || !sessionName) {
-      return res.status(400).json({ error: 'Missing phone or session' });
+    if (!phone || !instanceName) {
+      console.log('[webhook] msg sem phone/instance', JSON.stringify({ phone, instanceName }).slice(0, 200));
+      return res.status(200).json({ ok: true, skipped: 'no phone/instance' });
     }
 
-    // Find workspace via WhatsApp connection
     const connection = await prisma.whatsappConnection.findFirst({
-      where: { session_name: sessionName },
+      where: { session_name: instanceName },
     });
-
-    if (!connection) {
-      return res.status(404).json({ error: 'Connection not found' });
-    }
+    if (!connection) return res.status(200).json({ ok: true, skipped: 'connection not found' });
 
     const workspaceId = connection.workspace_id;
 
-    // Recebeu mensagem = instância está viva. Marca CONNECTED se ainda não estava.
     if (connection.status !== 'CONNECTED') {
-      await prisma.whatsappConnection.update({
-        where: { id: connection.id },
-        data: { status: 'CONNECTED' },
-      });
+      await prisma.whatsappConnection.update({ where: { id: connection.id }, data: { status: 'CONNECTED' } });
     }
 
-    // Upsert lead — update name if first time seeing it
     let lead = await prisma.lead.upsert({
       where: { workspace_id_phone_number: { workspace_id: workspaceId, phone_number: phone } },
       update: contactName ? { name: contactName } : {},
       create: { workspace_id: workspaceId, phone_number: phone, name: contactName || null },
     });
 
-    // Match trackable message for UTM attribution (only if lead has no UTMs yet)
+    // Atribuição UTM via mensagem rastreável (só se ainda sem UTM)
     if (text && !lead.utm_source) {
       const match = await matchTrackableMessage(workspaceId, text);
       if (match) {
@@ -106,9 +110,9 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
       }
     }
 
-    // Match rotator click for fine attribution (fbclid/ip/ua) — só se ainda não casado
-    if (text && !lead.fbclid && !lead.click_time) {
-      const click = await matchRotatorClick(connection.id, lead.id, text);
+    // Atribuição fina do rotador (fbclid/ip/ua) — só se ainda não casado
+    if (!lead.fbclid && !lead.click_time) {
+      const click = await matchRotatorClick(connection.id, lead.id, text || '');
       if (click) {
         lead = await prisma.lead.update({
           where: { id: lead.id },
@@ -119,10 +123,10 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
             click_time: click.created_at,
           },
         });
+        console.log('[webhook] MATCH rotator click', { lead: lead.id, fbclid: click.fbclid });
       }
     }
 
-    // Save message (remove o token do rotador do texto exibido)
     if (text) {
       await prisma.message.create({
         data: {
