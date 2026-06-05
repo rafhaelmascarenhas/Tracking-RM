@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, Trash2, Pencil, Copy, Shuffle, ChevronUp, ChevronDown, MousePointerClick, QrCode, Upload, X } from 'lucide-react';
 import { fetcher, poster, putter, deleter } from '@/lib/fetcher';
 import { Reports } from './Reports';
+import { Triggers } from './Triggers';
 
 type NumberConn = {
   id: string;
@@ -275,12 +276,17 @@ export function Rotators() {
         <div className="flex justify-between items-center">
           <TabsList>
             <TabsTrigger value="rotadores">Rotadores</TabsTrigger>
+            <TabsTrigger value="gatilhos">Gatilhos</TabsTrigger>
             <TabsTrigger value="relatorios">Relatórios</TabsTrigger>
           </TabsList>
           <Button onClick={openNew} className="bg-[#0095FF] text-white">
             <Plus className="w-4 h-4 mr-1" /> Novo Rotador
           </Button>
         </div>
+
+        <TabsContent value="gatilhos">
+          <Triggers />
+        </TabsContent>
 
         <TabsContent value="relatorios">
           <Reports />

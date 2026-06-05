@@ -26,6 +26,7 @@ model Workspace {
   trackableMessages   TrackableMessage[]
   trackableLinks      TrackableLink[]
   rotators            Rotator[]
+  conversionTriggers  ConversionTrigger[]
 
   @@map("workspaces")
 }
@@ -208,4 +209,40 @@ model RotatorClick {
   rotator Rotator @relation(fields: [rotator_id], references: [id], onDelete: Cascade)
 
   @@map("rotator_clicks")
+}
+
+// Gatilho de evento de conversão por mensagem (modelo Tintim + atribuição do rotador).
+// Dispara fireMetaCapi pro lead quando a condição bate. fbclid do lead = atribuição ao anúncio.
+model ConversionTrigger {
+  id           String   @id @default(uuid())
+  workspace_id String
+  name         String   // rótulo, ex: "Lead — abriu conversa"
+  platform     String   @default("META") // META | GOOGLE
+  event_name   String   // Lead | Purchase | ViewContent | etc
+  value        Float?
+  currency     String   @default("BRL")
+  trigger_type String   // conversation_open | phrase
+  phrase       String?  // usado quando trigger_type = phrase
+  direction    String   @default("any") // lead | attendant | any (quem manda a frase)
+  only_rotator Boolean  @default(false) // só dispara p/ leads com atribuição (fbclid)
+  active       Boolean  @default(true)
+  created_at   DateTime @default(now())
+
+  workspace Workspace          @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  fired     ConversionFired[]
+
+  @@map("conversion_triggers")
+}
+
+// Dedupe: garante que cada gatilho dispara no máximo 1x por lead.
+model ConversionFired {
+  id         String   @id @default(uuid())
+  trigger_id String
+  lead_id    String
+  fired_at   DateTime @default(now())
+
+  trigger ConversionTrigger @relation(fields: [trigger_id], references: [id], onDelete: Cascade)
+
+  @@unique([trigger_id, lead_id])
+  @@map("conversions_fired")
 }

@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { matchTrackableMessage } from '../services/messageMatcher';
 import { matchRotatorClick } from '../services/rotatorService';
+import { evaluateTriggers } from '../services/triggerService';
 
 export const webhookRouter = Router();
 
@@ -48,7 +49,6 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
     const msg = body.message ?? body.data?.message ?? {};
 
     const fromMe: boolean = msg.fromMe ?? body?.event?.IsFromMe ?? body?.data?.key?.fromMe ?? false;
-    if (fromMe) return res.json({ ok: true, skipped: 'outbound' });
 
     const isGroup: boolean = msg.isGroup ?? body?.event?.IsGroup ?? false;
     // chatid = JID com o telefone real (@s.whatsapp.net). chatlid = id interno (@lid), não usar.
@@ -92,6 +92,23 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
     }
 
     const workspaceId = connection.workspace_id;
+
+    // OUTBOUND (atendente respondeu): não cria lead, só avalia gatilhos de frase do atendente.
+    if (fromMe) {
+      const existingLead = await prisma.lead.findUnique({
+        where: { workspace_id_phone_number: { workspace_id: workspaceId, phone_number: phone } },
+      });
+      if (existingLead && text) {
+        await evaluateTriggers({
+          workspaceId,
+          leadId: existingLead.id,
+          text,
+          direction: 'attendant',
+          hasAttribution: !!existingLead.fbclid,
+        });
+      }
+      return res.json({ ok: true, handled: 'outbound' });
+    }
 
     if (connection.status !== 'CONNECTED') {
       await prisma.whatsappConnection.update({ where: { id: connection.id }, data: { status: 'CONNECTED' } });
@@ -146,6 +163,15 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
         },
       });
     }
+
+    // Gatilhos do lead (conversation_open dispara mesmo sem texto; phrase precisa do texto)
+    await evaluateTriggers({
+      workspaceId,
+      leadId: lead.id,
+      text: text || '',
+      direction: 'lead',
+      hasAttribution: !!lead.fbclid,
+    });
 
     return res.json({ ok: true, lead_id: lead.id });
   } catch (err) {
