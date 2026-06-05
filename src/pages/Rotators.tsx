@@ -556,7 +556,7 @@ export function Rotators() {
 
       {/* Clicks drill-down */}
       <Sheet open={clicksOpen} onOpenChange={setClicksOpen}>
-        <SheetContent className="w-full sm:max-w-3xl overflow-y-auto p-0">
+        <SheetContent className="w-full sm:w-[92vw] sm:max-w-[1100px] overflow-y-auto p-0">
           <div className="p-6 border-b sticky top-0 bg-white z-10">
             <SheetHeader>
               <SheetTitle className="flex items-center gap-2">
@@ -646,15 +646,18 @@ export function Rotators() {
                           </TableCell>
                           <TableCell className="text-sm">{num?.session_name || '—'}</TableCell>
                           <TableCell className="text-xs text-gray-500">{deviceFromUA(c.user_agent)}</TableCell>
-                          <TableCell>
+                          <TableCell className="max-w-[320px]">
                             {clickId ? (
-                              <button
-                                onClick={() => navigator.clipboard.writeText(clickId)}
-                                title={`${clickId} (clique p/ copiar)`}
-                                className="text-xs font-mono text-gray-500 hover:text-blue-600 max-w-[100px] truncate inline-block align-bottom"
-                              >
-                                {clickId.slice(0, 12)}…
-                              </button>
+                              <div className="flex items-start gap-1">
+                                <code className="text-[11px] font-mono text-gray-600 break-all leading-tight">{clickId}</code>
+                                <button
+                                  onClick={() => navigator.clipboard.writeText(clickId)}
+                                  title="Copiar"
+                                  className="shrink-0 text-gray-400 hover:text-blue-600"
+                                >
+                                  <Copy className="w-3 h-3" />
+                                </button>
+                              </div>
                             ) : <span className="text-gray-300">—</span>}
                           </TableCell>
                           <TableCell className="text-center">
