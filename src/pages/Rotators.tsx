@@ -6,11 +6,11 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, Trash2, Pencil, Copy, Shuffle, ChevronUp, ChevronDown, MousePointerClick, QrCode, Upload, X } from 'lucide-react';
 import { fetcher, poster, putter, deleter } from '@/lib/fetcher';
+import { Reports } from './Reports';
 
 type NumberConn = {
   id: string;
@@ -271,15 +271,26 @@ export function Rotators() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-lg font-bold text-gray-800">Rotadores de Números</h2>
-          <p className="text-sm text-gray-500">Distribua os leads de 1 anúncio entre vários números de WhatsApp.</p>
+      <Tabs defaultValue="rotadores" className="space-y-6">
+        <div className="flex justify-between items-center">
+          <TabsList>
+            <TabsTrigger value="rotadores">Rotadores</TabsTrigger>
+            <TabsTrigger value="relatorios">Relatórios</TabsTrigger>
+          </TabsList>
+          <Button onClick={openNew} className="bg-[#0095FF] text-white">
+            <Plus className="w-4 h-4 mr-1" /> Novo Rotador
+          </Button>
         </div>
-        <Button onClick={openNew} className="bg-[#0095FF] text-white">
-          <Plus className="w-4 h-4 mr-1" /> Novo Rotador
-        </Button>
-      </div>
+
+        <TabsContent value="relatorios">
+          <Reports />
+        </TabsContent>
+
+        <TabsContent value="rotadores" className="space-y-6">
+          <div>
+            <h2 className="text-lg font-bold text-gray-800">Rotadores de Números</h2>
+            <p className="text-sm text-gray-500">Distribua os leads de 1 anúncio entre vários números de WhatsApp.</p>
+          </div>
 
       <Card className="border-gray-200 shadow-sm overflow-hidden">
         <Table>
@@ -371,6 +382,8 @@ export function Rotators() {
           </TableBody>
         </Table>
       </Card>
+        </TabsContent>
+      </Tabs>
 
       {/* Create / Edit dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
@@ -555,14 +568,14 @@ export function Rotators() {
       )}
 
       {/* Clicks drill-down */}
-      <Sheet open={clicksOpen} onOpenChange={setClicksOpen}>
-        <SheetContent className="w-full sm:w-[92vw] sm:max-w-[1100px] overflow-y-auto p-0">
+      <Dialog open={clicksOpen} onOpenChange={setClicksOpen}>
+        <DialogContent className="max-w-5xl w-[95vw] max-h-[88vh] overflow-y-auto p-0">
           <div className="p-6 border-b sticky top-0 bg-white z-10">
-            <SheetHeader>
-              <SheetTitle className="flex items-center gap-2">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
                 <MousePointerClick className="w-4 h-4" /> Cliques — {clicksTitle}
-              </SheetTitle>
-            </SheetHeader>
+              </DialogTitle>
+            </DialogHeader>
 
             {/* Stat cards */}
             {(() => {
@@ -678,8 +691,8 @@ export function Rotators() {
               );
             })()}
           </div>
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

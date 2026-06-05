@@ -35,7 +35,6 @@ const navItems = [
   { href: '/webhooks', label: 'Disparos de Webhook', icon: Globe },
   { href: '/team', label: 'Acessos do Cliente', icon: Users },
   { href: '/client-info', label: 'Informações do Cliente', icon: FileText },
-  { href: '/reports', label: 'Relatórios', icon: PieChart },
   { href: '/help', label: 'Central de Ajuda', icon: HelpCircle },
   { href: '/support', label: 'Suporte', icon: LifeBuoy },
   { href: '/suggest', label: 'Sugira Funcionalidades', icon: Lightbulb },
