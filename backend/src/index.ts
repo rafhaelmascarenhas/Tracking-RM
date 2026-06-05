@@ -12,6 +12,7 @@ import { workspaceRouter } from './routes/workspace';
 import { redirectRouter } from './routes/redirect';
 import { rotatorRedirectRouter } from './routes/rotatorRedirect';
 import { rotatorsRouter } from './routes/rotators';
+import { reportsRouter } from './routes/reports';
 import { authMiddleware } from './middleware/auth';
 
 const app = express();
@@ -35,6 +36,7 @@ app.use('/api/journey-stages', journeyStagesRouter);
 app.use('/api/conversion-events', conversionEventsRouter);
 app.use('/api/numbers', numbersRouter);
 app.use('/api/rotators', rotatorsRouter);
+app.use('/api/reports', reportsRouter);
 app.use('/api/workspace', workspaceRouter);
 
 app.listen(PORT, () => {
