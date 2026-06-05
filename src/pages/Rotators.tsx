@@ -8,7 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Trash2, Pencil, Copy, Shuffle, ChevronUp, ChevronDown, MousePointerClick } from 'lucide-react';
+import { Plus, Trash2, Pencil, Copy, Shuffle, ChevronUp, ChevronDown, MousePointerClick, QrCode } from 'lucide-react';
 import { fetcher, poster, putter, deleter } from '@/lib/fetcher';
 
 type NumberConn = {
@@ -30,6 +30,11 @@ type Rotator = {
   utm_medium?: string | null;
   utm_campaign?: string | null;
   active: boolean;
+  use_landing: boolean;
+  landing_logo?: string | null;
+  landing_title?: string | null;
+  landing_cta?: string | null;
+  hide_token: boolean;
   targets?: RotatorTarget[];
   _count?: { clicks: number; targets: number };
   _matched_clicks?: number;
@@ -57,6 +62,11 @@ const empty: FormState = {
   utm_source: 'meta',
   utm_medium: 'cpc',
   utm_campaign: '',
+  use_landing: false,
+  landing_logo: '',
+  landing_title: '',
+  landing_cta: '',
+  hide_token: false,
   form_targets: [],
 };
 
@@ -78,8 +88,13 @@ export function Rotators() {
 
   const [clicksOpen, setClicksOpen] = useState(false);
   const [clicksTitle, setClicksTitle] = useState('');
+  const [clicksRotatorId, setClicksRotatorId] = useState('');
   const [clicks, setClicks] = useState<RotatorClick[]>([]);
   const [clicksLoading, setClicksLoading] = useState(false);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+
+  const [qrUrl, setQrUrl] = useState<string | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -150,6 +165,11 @@ export function Rotators() {
       utm_source: form.utm_source,
       utm_medium: form.utm_medium,
       utm_campaign: form.utm_campaign,
+      use_landing: form.use_landing ?? false,
+      landing_logo: form.landing_logo || null,
+      landing_title: form.landing_title || null,
+      landing_cta: form.landing_cta || null,
+      hide_token: form.hide_token ?? false,
       targets: form.form_targets.map(({ connection_id, weight }, i) => ({
         connection_id,
         weight,
@@ -174,16 +194,26 @@ export function Rotators() {
     load();
   };
 
-  const openClicks = async (r: Rotator) => {
-    setClicksTitle(r.name);
-    setClicksOpen(true);
+  const fetchClicks = async (id: string, from: string, to: string) => {
     setClicksLoading(true);
     try {
-      const data = await fetcher(`/rotators/${r.id}/clicks`);
+      const params = new URLSearchParams({ take: '200' });
+      if (from) params.set('from', from);
+      if (to) params.set('to', to);
+      const data = await fetcher(`/rotators/${id}/clicks?${params}`);
       setClicks(data);
     } finally {
       setClicksLoading(false);
     }
+  };
+
+  const openClicks = async (r: Rotator) => {
+    setClicksTitle(r.name);
+    setClicksRotatorId(r.id);
+    setDateFrom('');
+    setDateTo('');
+    setClicksOpen(true);
+    fetchClicks(r.id, '', '');
   };
 
   const numMap = Object.fromEntries(numbers.map((n) => [n.id, n]));
@@ -291,6 +321,7 @@ export function Rotators() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
+                    <Button size="sm" variant="ghost" title="QR Code" onClick={() => setQrUrl(metaUrl)}><QrCode className="w-4 h-4" /></Button>
                     <Button size="sm" variant="outline" onClick={() => openEdit(r)} className="gap-1"><Pencil className="w-3 h-3" /> Editar</Button>
                     <Button size="sm" variant="ghost" onClick={() => del(r.id)}><Trash2 className="w-4 h-4 text-red-500" /></Button>
                   </TableCell>
@@ -445,6 +476,61 @@ export function Rotators() {
                 <Input value={form.utm_campaign || ''} onChange={(e) => setForm({ ...form, utm_campaign: e.target.value })} />
               </div>
             </div>
+
+            {/* Rastreamento */}
+            <div className="border rounded-lg p-3 space-y-2 bg-gray-50">
+              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Rastreamento</p>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  checked={!!form.hide_token}
+                  onCheckedChange={(v) => setForm({ ...form, hide_token: !!v })}
+                />
+                <span className="text-sm">Ocultar código da mensagem (usa fallback 6h)</span>
+              </label>
+            </div>
+
+            {/* Landing page */}
+            <div className="border rounded-lg p-3 space-y-3 bg-gray-50">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Landing page (Meta Ads)</p>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={!!form.use_landing}
+                    onCheckedChange={(v) => setForm({ ...form, use_landing: !!v })}
+                  />
+                  <span className="text-xs text-gray-600">Ativar por padrão no link direto</span>
+                </label>
+              </div>
+              <div>
+                <Label className="text-xs">URL do Logo</Label>
+                <Input
+                  value={form.landing_logo || ''}
+                  onChange={(e) => setForm({ ...form, landing_logo: e.target.value })}
+                  placeholder="https://seusite.com/logo.png"
+                  className="h-8 text-sm mt-1"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs">Título</Label>
+                  <Input
+                    value={form.landing_title || ''}
+                    onChange={(e) => setForm({ ...form, landing_title: e.target.value })}
+                    placeholder="Fale com a gente"
+                    className="h-8 text-sm mt-1"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Texto do botão</Label>
+                  <Input
+                    value={form.landing_cta || ''}
+                    onChange={(e) => setForm({ ...form, landing_cta: e.target.value })}
+                    placeholder="💬 Abrir WhatsApp"
+                    className="h-8 text-sm mt-1"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
@@ -452,6 +538,28 @@ export function Rotators() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* QR Code dialog */}
+      {qrUrl && (
+        <Dialog open={!!qrUrl} onOpenChange={() => setQrUrl(null)}>
+          <DialogContent className="max-w-xs">
+            <DialogHeader><DialogTitle>QR Code</DialogTitle></DialogHeader>
+            <div className="flex flex-col items-center gap-3 py-2">
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrUrl)}`}
+                alt="QR Code"
+                className="rounded-lg border"
+                width={220}
+                height={220}
+              />
+              <p className="text-xs text-gray-500 text-center break-all">{qrUrl}</p>
+              <Button size="sm" variant="outline" onClick={() => navigator.clipboard.writeText(qrUrl)}>
+                <Copy className="w-3 h-3 mr-1" /> Copiar link
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Clicks drill-down */}
       <Sheet open={clicksOpen} onOpenChange={setClicksOpen}>
@@ -461,6 +569,26 @@ export function Rotators() {
               <MousePointerClick className="w-4 h-4" /> Cliques — {clicksTitle}
             </SheetTitle>
           </SheetHeader>
+          <div className="mt-3 flex items-end gap-2">
+            <div>
+              <Label className="text-xs">De</Label>
+              <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-8 text-sm w-36" />
+            </div>
+            <div>
+              <Label className="text-xs">Até</Label>
+              <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-8 text-sm w-36" />
+            </div>
+            <Button size="sm" onClick={() => fetchClicks(clicksRotatorId, dateFrom, dateTo)}>Filtrar</Button>
+            <Button size="sm" variant="ghost" onClick={() => { setDateFrom(''); setDateTo(''); fetchClicks(clicksRotatorId, '', ''); }}>Limpar</Button>
+          </div>
+          {clicks.length > 0 && (
+            <div className="mt-3 flex gap-4 text-sm">
+              <span className="text-gray-600">Total: <strong>{clicks.length}</strong></span>
+              <span className="text-green-600">Casados: <strong>{clicks.filter(c => c.status === 'matched').length}</strong></span>
+              <span className="text-gray-500">Pendentes: <strong>{clicks.filter(c => c.status === 'pending').length}</strong></span>
+              <span className="text-blue-600">Taxa: <strong>{Math.round(clicks.filter(c => c.status === 'matched').length / clicks.length * 100)}%</strong></span>
+            </div>
+          )}
           <div className="mt-4">
             {clicksLoading ? (
               <p className="text-sm text-gray-500 text-center py-8">Carregando...</p>

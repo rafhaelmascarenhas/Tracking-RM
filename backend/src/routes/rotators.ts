@@ -92,8 +92,14 @@ rotatorsRouter.get('/:id/clicks', async (req: Request, res: Response) => {
 
   const take = Math.min(parseInt(String(req.query.take || '50'), 10) || 50, 200);
   const skip = parseInt(String(req.query.skip || '0'), 10) || 0;
+  const from = req.query.from ? new Date(String(req.query.from)) : undefined;
+  const to = req.query.to ? new Date(String(req.query.to) + 'T23:59:59') : undefined;
+
   const clicks = await prisma.rotatorClick.findMany({
-    where: { rotator_id: rotator.id },
+    where: {
+      rotator_id: rotator.id,
+      ...(from || to ? { created_at: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
+    },
     orderBy: { created_at: 'desc' },
     take,
     skip,
@@ -111,6 +117,11 @@ rotatorsRouter.post('/', async (req: Request, res: Response) => {
     utm_campaign,
     utm_term,
     utm_content,
+    use_landing = false,
+    landing_logo = null,
+    landing_title = null,
+    landing_cta = null,
+    hide_token = false,
     targets = [],
   } = req.body as { targets?: TargetInput[] } & Record<string, any>;
 
@@ -133,6 +144,11 @@ rotatorsRouter.post('/', async (req: Request, res: Response) => {
       utm_campaign: utm_campaign || null,
       utm_term: utm_term || null,
       utm_content: utm_content || null,
+      use_landing,
+      landing_logo,
+      landing_title,
+      landing_cta,
+      hide_token,
       targets: { create: builtTargets },
     },
     include: { targets: true },
@@ -158,6 +174,11 @@ rotatorsRouter.put('/:id', async (req: Request, res: Response) => {
     utm_term,
     utm_content,
     active,
+    use_landing,
+    landing_logo,
+    landing_title,
+    landing_cta,
+    hide_token,
     targets,
   } = req.body as { targets?: TargetInput[] } & Record<string, any>;
 
@@ -182,6 +203,11 @@ rotatorsRouter.put('/:id', async (req: Request, res: Response) => {
       utm_term: utm_term ?? existing.utm_term,
       utm_content: utm_content ?? existing.utm_content,
       active: typeof active === 'boolean' ? active : existing.active,
+      use_landing: typeof use_landing === 'boolean' ? use_landing : existing.use_landing,
+      landing_logo: landing_logo !== undefined ? landing_logo : existing.landing_logo,
+      landing_title: landing_title !== undefined ? landing_title : existing.landing_title,
+      landing_cta: landing_cta !== undefined ? landing_cta : existing.landing_cta,
+      hide_token: typeof hide_token === 'boolean' ? hide_token : existing.hide_token,
     },
     include: { targets: true },
   });

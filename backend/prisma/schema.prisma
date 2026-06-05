@@ -159,6 +159,13 @@ model Rotator {
   utm_content    String?
   rr_counter     Int      @default(0)
   active         Boolean  @default(true)
+  // Landing page (Meta ads)
+  use_landing    Boolean  @default(false)
+  landing_logo   String?
+  landing_title  String?
+  landing_cta    String?
+  // Token na mensagem — false = usa só fallback 6h (sem código visível)
+  hide_token     Boolean  @default(false)
   created_at     DateTime @default(now())
 
   workspace Workspace       @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
