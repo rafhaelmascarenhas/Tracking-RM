@@ -82,6 +82,24 @@ numbersRouter.post('/', async (req: Request, res: Response) => {
   }
 });
 
+// Re-aplica o webhook na instância (corrige números criados antes do fix do endpoint).
+numbersRouter.post('/:id/sync-webhook', async (req: Request, res: Response) => {
+  try {
+    const conn = await prisma.whatsappConnection.findFirst({
+      where: { id: req.params.id, workspace_id: req.workspaceId! },
+    });
+    if (!conn) return res.status(404).json({ error: 'Not found' });
+    if (!conn.uazapi_token) return res.status(400).json({ error: 'Conexão sem token uazapi.' });
+
+    const cfg = await getWorkspaceUazapi(req.workspaceId!);
+    const url = webhookUrl(req);
+    await setWebhook(cfg, conn.uazapi_token, url);
+    res.json({ ok: true, webhook_url: url });
+  } catch (e) {
+    handleErr(res, e);
+  }
+});
+
 // Inicia conexão e devolve o QR code pra escanear.
 numbersRouter.post('/:id/connect', async (req: Request, res: Response) => {
   try {

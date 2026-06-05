@@ -121,7 +121,8 @@ export async function initInstance(cfg: UazapiConfig, name: string): Promise<str
 
 /** Configura o webhook da instância (eventos de mensagens + conexão). */
 export async function setWebhook(cfg: UazapiConfig, token: string, url: string): Promise<void> {
-  await call(cfg, 'POST', '/instance/updateWebhook', {
+  // uazapiGO usa POST /webhook (não /instance/updateWebhook).
+  await call(cfg, 'POST', '/webhook', {
     token,
     body: {
       enabled: true,
