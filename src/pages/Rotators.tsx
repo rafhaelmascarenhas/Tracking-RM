@@ -48,10 +48,38 @@ type RotatorClick = {
   fbclid: string | null;
   gclid: string | null;
   ip_address: string | null;
+  user_agent: string | null;
   status: string;
   matched_at: string | null;
   created_at: string;
 };
+
+// Origem do tráfego a partir dos click ids.
+function trafficSource(c: RotatorClick): { label: string; cls: string } {
+  if (c.fbclid) return { label: 'Meta', cls: 'bg-blue-100 text-blue-700 border-blue-200' };
+  if (c.gclid) return { label: 'Google', cls: 'bg-amber-100 text-amber-700 border-amber-200' };
+  return { label: 'Direto', cls: 'bg-gray-100 text-gray-600 border-gray-200' };
+}
+
+// Dispositivo a partir do user-agent.
+function deviceFromUA(ua: string | null): string {
+  if (!ua) return '—';
+  if (/iphone|ipad|ios/i.test(ua)) return 'iOS';
+  if (/android/i.test(ua)) return 'Android';
+  if (/windows|macintosh|linux/i.test(ua)) return 'Desktop';
+  return 'Outro';
+}
+
+// Tempo entre clique e conversa (matched).
+function timeToConvert(c: RotatorClick): string {
+  if (c.status !== 'matched' || !c.matched_at) return '—';
+  const ms = new Date(c.matched_at).getTime() - new Date(c.created_at).getTime();
+  if (ms < 0) return '—';
+  const min = Math.round(ms / 60000);
+  if (min < 1) return '<1min';
+  if (min < 60) return `${min}min`;
+  return `${Math.round(min / 60)}h`;
+}
 
 type TargetEntry = { connection_id: string; weight: number };
 type FormState = Partial<Rotator> & { form_targets: TargetEntry[] };
@@ -94,6 +122,7 @@ export function Rotators() {
   const [clicksLoading, setClicksLoading] = useState(false);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [clicksFilter, setClicksFilter] = useState<'all' | 'matched' | 'pending'>('all');
 
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -527,77 +556,124 @@ export function Rotators() {
 
       {/* Clicks drill-down */}
       <Sheet open={clicksOpen} onOpenChange={setClicksOpen}>
-        <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle className="flex items-center gap-2">
-              <MousePointerClick className="w-4 h-4" /> Cliques — {clicksTitle}
-            </SheetTitle>
-          </SheetHeader>
-          <div className="mt-3 flex items-end gap-2">
-            <div>
-              <Label className="text-xs">De</Label>
-              <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-8 text-sm w-36" />
+        <SheetContent className="w-full sm:max-w-3xl overflow-y-auto p-0">
+          <div className="p-6 border-b sticky top-0 bg-white z-10">
+            <SheetHeader>
+              <SheetTitle className="flex items-center gap-2">
+                <MousePointerClick className="w-4 h-4" /> Cliques — {clicksTitle}
+              </SheetTitle>
+            </SheetHeader>
+
+            {/* Stat cards */}
+            {(() => {
+              const total = clicks.length;
+              const matched = clicks.filter((c) => c.status === 'matched').length;
+              const pending = total - matched;
+              const rate = total > 0 ? Math.round((matched / total) * 100) : 0;
+              const stats = [
+                { label: 'Total', value: total, cls: 'text-gray-900' },
+                { label: 'Casados', value: matched, cls: 'text-green-600' },
+                { label: 'Pendentes', value: pending, cls: 'text-gray-400' },
+                { label: 'Taxa', value: `${rate}%`, cls: rate >= 50 ? 'text-green-600' : rate >= 20 ? 'text-yellow-600' : 'text-red-500' },
+              ];
+              return (
+                <div className="grid grid-cols-4 gap-2 mt-4">
+                  {stats.map((s) => (
+                    <div key={s.label} className="rounded-lg border bg-gray-50/50 px-3 py-2">
+                      <p className="text-[11px] uppercase tracking-wide text-gray-400">{s.label}</p>
+                      <p className={`text-xl font-bold ${s.cls}`}>{s.value}</p>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
+            {/* Filtros */}
+            <div className="mt-4 flex flex-wrap items-end gap-2">
+              <div>
+                <Label className="text-xs">De</Label>
+                <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-8 text-sm w-36" />
+              </div>
+              <div>
+                <Label className="text-xs">Até</Label>
+                <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-8 text-sm w-36" />
+              </div>
+              <Button size="sm" onClick={() => fetchClicks(clicksRotatorId, dateFrom, dateTo)}>Filtrar</Button>
+              <Button size="sm" variant="ghost" onClick={() => { setDateFrom(''); setDateTo(''); fetchClicks(clicksRotatorId, '', ''); }}>Limpar</Button>
+              <div className="ml-auto flex gap-1">
+                {([['all', 'Todos'], ['matched', 'Casados'], ['pending', 'Pendentes']] as const).map(([k, label]) => (
+                  <Button key={k} size="sm" variant={clicksFilter === k ? 'default' : 'outline'} onClick={() => setClicksFilter(k)}>
+                    {label}
+                  </Button>
+                ))}
+              </div>
             </div>
-            <div>
-              <Label className="text-xs">Até</Label>
-              <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-8 text-sm w-36" />
-            </div>
-            <Button size="sm" onClick={() => fetchClicks(clicksRotatorId, dateFrom, dateTo)}>Filtrar</Button>
-            <Button size="sm" variant="ghost" onClick={() => { setDateFrom(''); setDateTo(''); fetchClicks(clicksRotatorId, '', ''); }}>Limpar</Button>
           </div>
-          {clicks.length > 0 && (
-            <div className="mt-3 flex gap-4 text-sm">
-              <span className="text-gray-600">Total: <strong>{clicks.length}</strong></span>
-              <span className="text-green-600">Casados: <strong>{clicks.filter(c => c.status === 'matched').length}</strong></span>
-              <span className="text-gray-500">Pendentes: <strong>{clicks.filter(c => c.status === 'pending').length}</strong></span>
-              <span className="text-blue-600">Taxa: <strong>{Math.round(clicks.filter(c => c.status === 'matched').length / clicks.length * 100)}%</strong></span>
-            </div>
-          )}
-          <div className="mt-4">
+
+          {/* Tabela */}
+          <div className="p-6 pt-3">
             {clicksLoading ? (
-              <p className="text-sm text-gray-500 text-center py-8">Carregando...</p>
-            ) : clicks.length === 0 ? (
-              <p className="text-sm text-gray-500 text-center py-8">Nenhum clique registrado ainda.</p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Data</TableHead>
-                    <TableHead>Número</TableHead>
-                    <TableHead>fbclid</TableHead>
-                    <TableHead>IP</TableHead>
-                    <TableHead className="text-center">Match</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {clicks.map((c) => {
-                    const num = numMap[c.connection_id];
-                    return (
-                      <TableRow key={c.id}>
-                        <TableCell className="text-xs text-gray-600 whitespace-nowrap">
-                          {new Date(c.created_at).toLocaleString('pt-BR')}
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {num?.session_name || c.connection_id.slice(0, 8)}
-                        </TableCell>
-                        <TableCell className="text-xs font-mono max-w-[110px] truncate" title={c.fbclid || ''}>
-                          {c.fbclid ? `${c.fbclid.slice(0, 14)}…` : '—'}
-                        </TableCell>
-                        <TableCell className="text-xs">{c.ip_address || '—'}</TableCell>
-                        <TableCell className="text-center">
-                          <Badge
-                            variant={c.status === 'matched' ? 'default' : 'secondary'}
-                            className={c.status === 'matched' ? 'bg-green-100 text-green-700 border-green-200' : ''}
-                          >
-                            {c.status === 'matched' ? 'Casado' : 'Pendente'}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            )}
+              <p className="text-sm text-gray-500 text-center py-10">Carregando...</p>
+            ) : (() => {
+              const rows = clicks.filter((c) => clicksFilter === 'all' || c.status === clicksFilter);
+              if (rows.length === 0) {
+                return <p className="text-sm text-gray-400 text-center py-10">Nenhum clique {clicksFilter === 'matched' ? 'casado' : clicksFilter === 'pending' ? 'pendente' : ''} no período.</p>;
+              }
+              return (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Data</TableHead>
+                      <TableHead>Origem</TableHead>
+                      <TableHead>Número</TableHead>
+                      <TableHead>Dispositivo</TableHead>
+                      <TableHead>fbclid</TableHead>
+                      <TableHead className="text-center">Conversão</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {rows.map((c) => {
+                      const num = numMap[c.connection_id];
+                      const src = trafficSource(c);
+                      const clickId = c.fbclid || c.gclid;
+                      return (
+                        <TableRow key={c.id} className={c.status === 'matched' ? 'bg-green-50/30' : ''}>
+                          <TableCell className="text-xs text-gray-600 whitespace-nowrap">
+                            {new Date(c.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className={`text-xs ${src.cls}`}>{src.label}</Badge>
+                          </TableCell>
+                          <TableCell className="text-sm">{num?.session_name || '—'}</TableCell>
+                          <TableCell className="text-xs text-gray-500">{deviceFromUA(c.user_agent)}</TableCell>
+                          <TableCell>
+                            {clickId ? (
+                              <button
+                                onClick={() => navigator.clipboard.writeText(clickId)}
+                                title={`${clickId} (clique p/ copiar)`}
+                                className="text-xs font-mono text-gray-500 hover:text-blue-600 max-w-[100px] truncate inline-block align-bottom"
+                              >
+                                {clickId.slice(0, 12)}…
+                              </button>
+                            ) : <span className="text-gray-300">—</span>}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {c.status === 'matched' ? (
+                              <div className="flex flex-col items-center">
+                                <Badge className="bg-green-100 text-green-700 border-green-200 text-xs">Casado</Badge>
+                                <span className="text-[10px] text-gray-400 mt-0.5">{timeToConvert(c)}</span>
+                              </div>
+                            ) : (
+                              <Badge variant="secondary" className="text-xs text-gray-500">Pendente</Badge>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              );
+            })()}
           </div>
         </SheetContent>
       </Sheet>
