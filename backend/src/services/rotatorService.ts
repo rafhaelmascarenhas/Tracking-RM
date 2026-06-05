@@ -53,7 +53,8 @@ const FALLBACK_WINDOW_MS = 30 * 60 * 1000; // 30min — janela curta evita rouba
 // Esses cliques nunca devem casar com um lead real.
 export function isBotUserAgent(ua: string | null | undefined): boolean {
   if (!ua) return false;
-  return /facebookexternalhit|facebot|bot\b|crawler|spider|preview|WhatsApp\/|headless/i.test(ua);
+  // Só crawlers/validadores conhecidos — NÃO filtra WhatsApp/IG/FB in-app (humanos reais).
+  return /facebookexternalhit|facebot|bingpreview|googlebot|crawler|spider|headlesschrome|python-requests|curl\/|wget|axios/i.test(ua);
 }
 
 /**
