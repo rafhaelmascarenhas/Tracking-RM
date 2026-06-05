@@ -47,20 +47,31 @@ export async function pickTarget(rotatorId: string): Promise<TargetWithConnectio
 }
 
 const TOKEN_RE = /\[([a-f0-9]{6,10})\]/i;
-const FALLBACK_WINDOW_MS = 6 * 60 * 60 * 1000; // 6h
+const FALLBACK_WINDOW_MS = 30 * 60 * 1000; // 30min — janela curta evita roubar atribuição
+
+// User-agents de bots (crawler do Meta valida o link antes de aprovar o anúncio).
+// Esses cliques nunca devem casar com um lead real.
+export function isBotUserAgent(ua: string | null | undefined): boolean {
+  if (!ua) return false;
+  return /facebookexternalhit|facebot|bot\b|crawler|spider|preview|WhatsApp\/|headless/i.test(ua);
+}
 
 /**
- * Liga o clique do rotador à conversa. Primário: token na mensagem.
- * Fallback: clique pendente mais recente na mesma conexão dentro da janela.
- * Marca o clique como matched e retorna os dados de atribuição (fbclid/ip/ua/time).
+ * Liga o clique do rotador à conversa.
+ *  - Primário: token na mensagem (preciso, sempre confiável).
+ *  - Fallback: só quando a mensagem veio de clique no link (clickToChat) — clique
+ *    pendente NÃO-bot mais recente na mesma conexão dentro de 30min.
+ * Evita atribuir cliques de bot/anúncio a clientes orgânicos.
  */
 export async function matchRotatorClick(
   connectionId: string,
   leadId: string,
-  messageText: string
+  messageText: string,
+  opts: { clickToChat?: boolean } = {}
 ) {
   let click = null;
 
+  // 1) Token na mensagem — match exato.
   const m = messageText.match(TOKEN_RE);
   if (m) {
     click = await prisma.rotatorClick.findFirst({
@@ -68,15 +79,19 @@ export async function matchRotatorClick(
     });
   }
 
-  if (!click) {
-    click = await prisma.rotatorClick.findFirst({
+  // 2) Fallback só se a mensagem veio de um clique em link (não conversa orgânica).
+  if (!click && opts.clickToChat) {
+    const candidates = await prisma.rotatorClick.findMany({
       where: {
         connection_id: connectionId,
         status: 'pending',
         created_at: { gte: new Date(Date.now() - FALLBACK_WINDOW_MS) },
       },
       orderBy: { created_at: 'desc' },
+      take: 10,
     });
+    // Ignora cliques de bot (crawler do Meta).
+    click = candidates.find((c) => !isBotUserAgent(c.user_agent)) ?? null;
   }
 
   if (!click) return null;

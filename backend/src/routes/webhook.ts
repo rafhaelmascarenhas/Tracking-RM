@@ -47,29 +47,33 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
 
     const msg = body.message ?? body.data?.message ?? {};
 
-    // DEBUG temporário: confirma shape do message do uazapiGO
-    console.log('[webhook] msg', JSON.stringify(msg).slice(0, 500));
-
     const fromMe: boolean = msg.fromMe ?? body?.event?.IsFromMe ?? body?.data?.key?.fromMe ?? false;
     if (fromMe) return res.json({ ok: true, skipped: 'outbound' });
 
     const isGroup: boolean = msg.isGroup ?? body?.event?.IsGroup ?? false;
-    const senderJid: string = msg.sender || msg.chatid || msg.chatId || body?.event?.Sender || body?.data?.key?.remoteJid || '';
+    // chatid = JID com o telefone real (@s.whatsapp.net). chatlid = id interno (@lid), não usar.
+    const senderJid: string = msg.chatid || msg.chatId || msg.sender || body?.data?.key?.remoteJid || '';
     if (isGroup || senderJid.includes('@g.us')) return res.json({ ok: true, skipped: 'group' });
 
     const phone = senderJid.replace(/@.*$/, '').replace(/\D/g, '');
 
+    // uazapiGO: texto em content.text (objeto). Fallbacks pra outros shapes.
     const text: string =
+      (typeof msg.content === 'object' ? msg.content?.text : msg.content) ||
       msg.text ||
-      msg.content ||
       msg.conversation ||
       msg.caption ||
       msg.message?.conversation ||
       msg.message?.extendedTextMessage?.text ||
-      msg.message?.imageMessage?.caption ||
       '';
 
-    const contactName: string = msg.senderName || body?.chat?.lead_name || body?.chat?.name || msg.pushName || '';
+    const contactName: string = msg.senderName || msg.pushName || body?.chat?.lead_name || body?.chat?.name || '';
+
+    // Marcador do WhatsApp: mensagem originada de clique em link wa.me (não conversa orgânica).
+    const entryPoint: string =
+      msg.content?.contextInfo?.entryPointConversionSource ||
+      msg.contextInfo?.entryPointConversionSource || '';
+    const isClickToChat = entryPoint === 'click_to_chat_link';
 
     if (!phone || !instanceName) {
       console.log('[webhook] msg sem phone/instance', JSON.stringify({ phone, instanceName }).slice(0, 200));
@@ -112,7 +116,7 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
 
     // Atribuição fina do rotador (fbclid/ip/ua) — só se ainda não casado
     if (!lead.fbclid && !lead.click_time) {
-      const click = await matchRotatorClick(connection.id, lead.id, text || '');
+      const click = await matchRotatorClick(connection.id, lead.id, text || '', { clickToChat: isClickToChat });
       if (click) {
         lead = await prisma.lead.update({
           where: { id: lead.id },

@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
-import { pickTarget } from '../services/rotatorService';
+import { pickTarget, isBotUserAgent } from '../services/rotatorService';
 import { firePageViewCapi } from '../services/metaCapi';
 
 export const rotatorRedirectRouter = Router();
@@ -96,18 +96,24 @@ async function handleRotator(req: Request, res: Response, short_code: string, fo
   const target = await pickTarget(rotator.id);
   if (!target) return res.status(503).send('Nenhum número disponível');
 
+  const ua = req.headers['user-agent'] || null;
+  const isBot = isBotUserAgent(ua);
+
   const token = await uniqueToken();
-  await prisma.rotatorClick.create({
-    data: {
-      rotator_id: rotator.id,
-      connection_id: target.connection_id,
-      token,
-      fbclid: (req.query.fbclid as string) || null,
-      gclid: (req.query.gclid as string) || null,
-      ip_address: (req.headers['x-forwarded-for'] as string) || req.ip || null,
-      user_agent: req.headers['user-agent'] || null,
-    },
-  });
+  // Não registra clique de bot (crawler do Meta valida o link) — mantém pool e contador limpos.
+  if (!isBot) {
+    await prisma.rotatorClick.create({
+      data: {
+        rotator_id: rotator.id,
+        connection_id: target.connection_id,
+        token,
+        fbclid: (req.query.fbclid as string) || null,
+        gclid: (req.query.gclid as string) || null,
+        ip_address: (req.headers['x-forwarded-for'] as string) || req.ip || null,
+        user_agent: ua,
+      },
+    });
+  }
 
   const phone = (target.connection.phone_number || '').replace(/\D/g, '');
   if (!phone) return res.status(503).send('Número sem telefone cadastrado');
@@ -116,8 +122,8 @@ async function handleRotator(req: Request, res: Response, short_code: string, fo
   const useLanding = forceLanding || rotator.use_landing;
 
   if (useLanding) {
-    // Dispara CAPI ViewContent server-side (best-effort, não bloqueia resposta)
-    if (workspace?.meta_pixel_id && workspace?.meta_capi_token) {
+    // Dispara CAPI ViewContent server-side (best-effort, não bloqueia resposta) — nunca pra bot
+    if (!isBot && workspace?.meta_pixel_id && workspace?.meta_capi_token) {
       firePageViewCapi({
         pixelId: workspace.meta_pixel_id,
         token: workspace.meta_capi_token,
