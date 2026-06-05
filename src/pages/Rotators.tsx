@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,7 +8,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Trash2, Pencil, Copy, Shuffle, ChevronUp, ChevronDown, MousePointerClick, QrCode } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Plus, Trash2, Pencil, Copy, Shuffle, ChevronUp, ChevronDown, MousePointerClick, QrCode, Upload, X } from 'lucide-react';
 import { fetcher, poster, putter, deleter } from '@/lib/fetcher';
 
 type NumberConn = {
@@ -95,6 +96,16 @@ export function Rotators() {
   const [dateTo, setDateTo] = useState('');
 
   const [qrUrl, setQrUrl] = useState<string | null>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 300 * 1024) { alert('Imagem muito grande. Máximo 300KB.'); return; }
+    const reader = new FileReader();
+    reader.onload = () => setForm((f) => ({ ...f, landing_logo: reader.result as string }));
+    reader.readAsDataURL(file);
+  };
 
   const load = () => {
     setLoading(true);
@@ -334,205 +345,158 @@ export function Rotators() {
 
       {/* Create / Edit dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
+        <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
+          <DialogHeader className="shrink-0">
             <DialogTitle className="flex items-center gap-2">
               <Shuffle className="w-4 h-4" /> {form.id ? 'Editar' : 'Novo'} Rotador
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label>Nome</Label>
-              <Input
-                value={form.name || ''}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="Campanha Verão SP"
-              />
-            </div>
 
-            <div>
-              <Label>Modo de distribuição</Label>
-              <div className="flex gap-2 mt-1">
-                {Object.keys(DIST_LABELS).map((mode) => (
-                  <Button
-                    key={mode}
-                    type="button"
-                    size="sm"
-                    variant={form.distribution === mode ? 'default' : 'outline'}
-                    onClick={() => setForm({ ...form, distribution: mode })}
-                  >
-                    {DIST_LABELS[mode]}
-                  </Button>
-                ))}
-              </div>
-              {form.distribution === 'WEIGHTED' && (
-                <p className="text-xs text-gray-500 mt-1">Defina a % de cada número. Total deve ser exatamente 100%.</p>
-              )}
-              {form.distribution === 'FALLBACK' && (
-                <p className="text-xs text-gray-500 mt-1">Primeiro número recebe tudo. Próximo entra só se offline. Use ↑↓ para definir prioridade.</p>
-              )}
-            </div>
+          <Tabs defaultValue="geral" className="flex-1 overflow-hidden flex flex-col">
+            <TabsList className="shrink-0 grid grid-cols-3 w-full">
+              <TabsTrigger value="geral">Geral</TabsTrigger>
+              <TabsTrigger value="mensagem">Mensagem</TabsTrigger>
+              <TabsTrigger value="landing">Landing Page</TabsTrigger>
+            </TabsList>
 
-            <div>
-              <Label>Números {form.distribution === 'FALLBACK' ? '(ordenados por prioridade)' : '(só conectados recebem)'}</Label>
-              <div className="mt-1 border rounded-lg divide-y max-h-52 overflow-y-auto">
-                {numbers.length === 0 ? (
-                  <div className="p-3 text-sm text-gray-500">Nenhum número cadastrado.</div>
-                ) : sortedNumbers.map((n) => {
-                  const idx = form.form_targets.findIndex((t) => t.connection_id === n.id);
-                  const checked = idx !== -1;
-                  const entry = checked ? form.form_targets[idx] : null;
-                  return (
-                    <div key={n.id} className="flex items-center gap-3 p-2 hover:bg-gray-50">
-                      <Checkbox
-                        checked={checked}
-                        onCheckedChange={() => toggleTarget(n.id)}
-                      />
-                      <span
-                        className="flex-1 text-sm cursor-pointer select-none"
-                        onClick={() => toggleTarget(n.id)}
-                      >
-                        {n.session_name}{n.phone_number ? ` (${n.phone_number})` : ''}
-                      </span>
-                      <Badge
-                        variant={n.status === 'CONNECTED' ? 'default' : 'destructive'}
-                        className="text-xs shrink-0"
-                      >
-                        {n.status === 'CONNECTED' ? 'Conectado' : 'Offline'}
-                      </Badge>
-
-                      {checked && form.distribution === 'WEIGHTED' && (
-                        <div className="flex items-center gap-1 shrink-0">
-                          <Input
-                            type="number"
-                            min={1}
-                            max={100}
-                            value={entry!.weight}
-                            onChange={(e) => setPct(n.id, parseInt(e.target.value) || 1)}
-                            onClick={(e) => e.stopPropagation()}
-                            className="w-16 h-7 text-sm"
-                          />
-                          <span className="text-xs text-gray-500">%</span>
-                        </div>
-                      )}
-
-                      {checked && form.distribution === 'FALLBACK' && (
-                        <div className="flex flex-col gap-0 shrink-0">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            className="h-5 w-6 p-0"
-                            onClick={(e) => { e.stopPropagation(); moveTarget(idx, -1); }}
-                            disabled={idx === 0}
-                          >
-                            <ChevronUp className="w-3 h-3" />
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            className="h-5 w-6 p-0"
-                            onClick={(e) => { e.stopPropagation(); moveTarget(idx, 1); }}
-                            disabled={idx === form.form_targets.length - 1}
-                          >
-                            <ChevronDown className="w-3 h-3" />
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {form.distribution === 'WEIGHTED' && form.form_targets.length > 0 && (
-              <div className={`text-xs font-medium flex items-center gap-1 -mt-1 ${weightTotal === 100 ? 'text-green-600' : 'text-red-500'}`}>
-                Total: {weightTotal}%
-                {weightTotal === 100 ? ' ✓' : weightTotal < 100 ? ` — faltam ${100 - weightTotal}%` : ` — excede em ${weightTotal - 100}%`}
-              </div>
-            )}
-
-            <div>
-              <Label>Mensagem pré-preenchida</Label>
-              <Input
-                value={form.prefilled_text || ''}
-                onChange={(e) => setForm({ ...form, prefilled_text: e.target.value })}
-              />
-              <p className="text-xs text-gray-500 mt-1">Essa frase rastreia a campanha — mantenha única por rotador.</p>
-            </div>
-
-            <div className="grid grid-cols-3 gap-3">
+            {/* TAB 1 — Geral */}
+            <TabsContent value="geral" className="flex-1 overflow-y-auto space-y-3 pr-1">
               <div>
-                <Label>utm_source</Label>
-                <Input value={form.utm_source || ''} onChange={(e) => setForm({ ...form, utm_source: e.target.value })} />
+                <Label>Nome</Label>
+                <Input value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Campanha Verão SP" />
               </div>
-              <div>
-                <Label>utm_medium</Label>
-                <Input value={form.utm_medium || ''} onChange={(e) => setForm({ ...form, utm_medium: e.target.value })} />
-              </div>
-              <div>
-                <Label>utm_campaign</Label>
-                <Input value={form.utm_campaign || ''} onChange={(e) => setForm({ ...form, utm_campaign: e.target.value })} />
-              </div>
-            </div>
 
-            {/* Rastreamento */}
-            <div className="border rounded-lg p-3 space-y-2 bg-gray-50">
-              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Rastreamento</p>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <Checkbox
-                  checked={!!form.hide_token}
-                  onCheckedChange={(v) => setForm({ ...form, hide_token: !!v })}
-                />
-                <span className="text-sm">Ocultar código da mensagem (usa fallback 6h)</span>
-              </label>
-            </div>
+              <div>
+                <Label>Distribuição de cliques</Label>
+                <div className="flex gap-2 mt-1">
+                  {Object.keys(DIST_LABELS).map((mode) => (
+                    <Button key={mode} type="button" size="sm" variant={form.distribution === mode ? 'default' : 'outline'} onClick={() => setForm({ ...form, distribution: mode })}>
+                      {DIST_LABELS[mode]}
+                    </Button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  {form.distribution === 'ROUND_ROBIN' && 'Reveza entre os números: 1º clique→nº1, 2º→nº2, volta ao início.'}
+                  {form.distribution === 'WEIGHTED' && 'Defina a % de cada número. Total deve ser exatamente 100%.'}
+                  {form.distribution === 'FALLBACK' && 'Tudo vai pro nº1. Só cai pro próximo se o anterior estiver offline. Use ↑↓ para ordenar.'}
+                </p>
+              </div>
 
-            {/* Landing page */}
-            <div className="border rounded-lg p-3 space-y-3 bg-gray-50">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Landing page (Meta Ads)</p>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <Checkbox
-                    checked={!!form.use_landing}
-                    onCheckedChange={(v) => setForm({ ...form, use_landing: !!v })}
-                  />
-                  <span className="text-xs text-gray-600">Ativar por padrão no link direto</span>
+              <div>
+                <Label>Números {form.distribution === 'FALLBACK' ? '(arraste pra ordenar prioridade)' : ''}</Label>
+                <div className="mt-1 border rounded-lg divide-y max-h-48 overflow-y-auto">
+                  {numbers.length === 0 ? (
+                    <div className="p-3 text-sm text-gray-500">Nenhum número cadastrado.</div>
+                  ) : sortedNumbers.map((n) => {
+                    const idx = form.form_targets.findIndex((t) => t.connection_id === n.id);
+                    const checked = idx !== -1;
+                    const entry = checked ? form.form_targets[idx] : null;
+                    return (
+                      <div key={n.id} className="flex items-center gap-3 p-2 hover:bg-gray-50">
+                        <Checkbox checked={checked} onCheckedChange={() => toggleTarget(n.id)} />
+                        <span className="flex-1 text-sm cursor-pointer select-none" onClick={() => toggleTarget(n.id)}>
+                          {n.session_name}{n.phone_number ? ` (${n.phone_number})` : ''}
+                        </span>
+                        <Badge variant={n.status === 'CONNECTED' ? 'default' : 'destructive'} className="text-xs shrink-0">
+                          {n.status === 'CONNECTED' ? 'Conectado' : 'Offline'}
+                        </Badge>
+                        {checked && form.distribution === 'WEIGHTED' && (
+                          <div className="flex items-center gap-1 shrink-0">
+                            <Input type="number" min={1} max={100} value={entry!.weight} onChange={(e) => setPct(n.id, parseInt(e.target.value) || 1)} onClick={(e) => e.stopPropagation()} className="w-16 h-7 text-sm" />
+                            <span className="text-xs text-gray-500">%</span>
+                          </div>
+                        )}
+                        {checked && form.distribution === 'FALLBACK' && (
+                          <div className="flex flex-col gap-0 shrink-0">
+                            <Button type="button" size="sm" variant="ghost" className="h-5 w-6 p-0" onClick={(e) => { e.stopPropagation(); moveTarget(idx, -1); }} disabled={idx === 0}><ChevronUp className="w-3 h-3" /></Button>
+                            <Button type="button" size="sm" variant="ghost" className="h-5 w-6 p-0" onClick={(e) => { e.stopPropagation(); moveTarget(idx, 1); }} disabled={idx === form.form_targets.length - 1}><ChevronDown className="w-3 h-3" /></Button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                {form.distribution === 'WEIGHTED' && form.form_targets.length > 0 && (
+                  <div className={`text-xs font-medium mt-1 ${weightTotal === 100 ? 'text-green-600' : 'text-red-500'}`}>
+                    Total: {weightTotal}%{weightTotal === 100 ? ' ✓' : weightTotal < 100 ? ` — faltam ${100 - weightTotal}%` : ` — excede em ${weightTotal - 100}%`}
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+
+            {/* TAB 2 — Mensagem */}
+            <TabsContent value="mensagem" className="flex-1 overflow-y-auto space-y-3 pr-1">
+              <div>
+                <Label>Mensagem pré-preenchida</Label>
+                <Input value={form.prefilled_text || ''} onChange={(e) => setForm({ ...form, prefilled_text: e.target.value })} />
+                <p className="text-xs text-gray-500 mt-1">Texto que aparece no WhatsApp antes do lead enviar. Mantenha único por rotador.</p>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div><Label>utm_source</Label><Input value={form.utm_source || ''} onChange={(e) => setForm({ ...form, utm_source: e.target.value })} /></div>
+                <div><Label>utm_medium</Label><Input value={form.utm_medium || ''} onChange={(e) => setForm({ ...form, utm_medium: e.target.value })} /></div>
+                <div><Label>utm_campaign</Label><Input value={form.utm_campaign || ''} onChange={(e) => setForm({ ...form, utm_campaign: e.target.value })} /></div>
+              </div>
+
+              <div className="border rounded-lg p-3 space-y-2 bg-gray-50">
+                <p className="text-sm font-medium text-gray-700">Rastreamento do clique</p>
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <Checkbox checked={!!form.hide_token} onCheckedChange={(v) => setForm({ ...form, hide_token: !!v })} className="mt-0.5" />
+                  <div>
+                    <span className="text-sm font-medium">Mensagem limpa (sem código)</span>
+                    <p className="text-xs text-gray-500 mt-0.5">Remove o código `[e7adfe]` da mensagem. O lead recebe texto limpo. O sistema usa o histórico de cliques dos últimos 6h para atribuir a conversão.</p>
+                  </div>
                 </label>
               </div>
+            </TabsContent>
+
+            {/* TAB 3 — Landing Page */}
+            <TabsContent value="landing" className="flex-1 overflow-y-auto space-y-3 pr-1">
+              <div className="border rounded-lg p-3 bg-blue-50 border-blue-200">
+                <p className="text-xs text-blue-700">O link <strong>Meta</strong> (<code>/j/chat/xxx</code>) sempre abre a landing page. O toggle abaixo faz o link <strong>Direto</strong> (<code>/j/xxx</code>) também abrir a landing em vez de redirecionar automaticamente.</p>
+              </div>
+
+              <label className="flex items-center gap-3 cursor-pointer p-3 border rounded-lg hover:bg-gray-50">
+                <Checkbox checked={!!form.use_landing} onCheckedChange={(v) => setForm({ ...form, use_landing: !!v })} />
+                <div>
+                  <span className="text-sm font-medium">Usar landing page no link direto</span>
+                  <p className="text-xs text-gray-500 mt-0.5">Quando marcado, ambos os links abrem a página com botão. Quando desmarcado, o link direto redireciona instantaneamente.</p>
+                </div>
+              </label>
+
               <div>
-                <Label className="text-xs">URL do Logo</Label>
-                <Input
-                  value={form.landing_logo || ''}
-                  onChange={(e) => setForm({ ...form, landing_logo: e.target.value })}
-                  placeholder="https://seusite.com/logo.png"
-                  className="h-8 text-sm mt-1"
-                />
+                <Label>Logo da empresa</Label>
+                <div className="mt-1 flex items-center gap-3">
+                  {form.landing_logo ? (
+                    <div className="relative">
+                      <img src={form.landing_logo} alt="Logo" className="h-14 w-auto max-w-[120px] object-contain rounded border" />
+                      <Button type="button" size="sm" variant="ghost" className="absolute -top-2 -right-2 h-5 w-5 p-0 rounded-full bg-red-100 hover:bg-red-200" onClick={() => setForm({ ...form, landing_logo: '' })}><X className="w-3 h-3 text-red-500" /></Button>
+                    </div>
+                  ) : (
+                    <div className="h-14 w-24 border-2 border-dashed rounded flex items-center justify-center text-gray-400 text-xs">Sem logo</div>
+                  )}
+                  <Button type="button" variant="outline" size="sm" onClick={() => logoInputRef.current?.click()}>
+                    <Upload className="w-3 h-3 mr-1" /> Upload
+                  </Button>
+                  <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                </div>
+                <p className="text-xs text-gray-400 mt-1">Máx 300KB. PNG/JPG/SVG.</p>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-xs">Título</Label>
-                  <Input
-                    value={form.landing_title || ''}
-                    onChange={(e) => setForm({ ...form, landing_title: e.target.value })}
-                    placeholder="Fale com a gente"
-                    className="h-8 text-sm mt-1"
-                  />
+                  <Label>Título da página</Label>
+                  <Input value={form.landing_title || ''} onChange={(e) => setForm({ ...form, landing_title: e.target.value })} placeholder="Fale com a gente" className="mt-1" />
                 </div>
                 <div>
-                  <Label className="text-xs">Texto do botão</Label>
-                  <Input
-                    value={form.landing_cta || ''}
-                    onChange={(e) => setForm({ ...form, landing_cta: e.target.value })}
-                    placeholder="💬 Abrir WhatsApp"
-                    className="h-8 text-sm mt-1"
-                  />
+                  <Label>Texto do botão</Label>
+                  <Input value={form.landing_cta || ''} onChange={(e) => setForm({ ...form, landing_cta: e.target.value })} placeholder="💬 Abrir WhatsApp" className="mt-1" />
                 </div>
               </div>
-            </div>
-          </div>
-          <DialogFooter>
+            </TabsContent>
+          </Tabs>
+
+          <DialogFooter className="shrink-0 border-t pt-3">
             <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
             <Button onClick={save} disabled={!!weightError} title={weightError ? 'Total deve ser 100%' : ''}>Salvar</Button>
           </DialogFooter>
