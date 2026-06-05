@@ -11,6 +11,9 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
   try {
     const body = req.body;
 
+    // DEBUG: loga todo payload recebido (remover após confirmar shape do uazapiGO)
+    console.log('[webhook] IN', JSON.stringify(body).slice(0, 800));
+
     // Only process inbound messages
     const event: string = body?.event || '';
 
