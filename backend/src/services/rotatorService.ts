@@ -80,8 +80,10 @@ export async function matchRotatorClick(
     });
   }
 
-  // 2) Fallback só se a mensagem veio de um clique em link (não conversa orgânica).
-  if (!click && opts.clickToChat) {
+  // 2) Fallback por tempo. O uazapi não envia o marcador click_to_chat_link
+  // (c2c sempre false), então não dá pra exigir clickToChat — senão nada casa.
+  // Casa o clique não-bot mais recente no mesmo número dentro da janela e consome.
+  if (!click) {
     const candidates = await prisma.rotatorClick.findMany({
       where: {
         connection_id: connectionId,
