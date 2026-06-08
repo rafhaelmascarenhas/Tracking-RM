@@ -47,7 +47,8 @@ export async function pickTarget(rotatorId: string): Promise<TargetWithConnectio
 }
 
 const TOKEN_RE = /\[([a-f0-9]{6,10})\]/i;
-const FALLBACK_WINDOW_MS = 30 * 60 * 1000; // 30min — janela curta evita roubar atribuição
+const FALLBACK_WINDOW_MS = 3 * 60 * 1000; // 3min — latência real anúncio→msg. Curto p/ evitar
+// casar lead orgânico com clique antigo (sem token/c2c não há sinal melhor de origem).
 
 // User-agents de bots (crawler do Meta valida o link antes de aprovar o anúncio).
 // Esses cliques nunca devem casar com um lead real.
