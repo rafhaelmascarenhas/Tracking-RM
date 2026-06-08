@@ -575,7 +575,7 @@ export function Rotators() {
 
       {/* Clicks drill-down */}
       <Dialog open={clicksOpen} onOpenChange={setClicksOpen}>
-        <DialogContent className="max-w-5xl w-[95vw] max-h-[88vh] overflow-y-auto p-0">
+        <DialogContent className="sm:max-w-5xl w-[95vw] max-h-[88vh] overflow-y-auto p-0">
           <div className="p-6 border-b sticky top-0 bg-white z-10">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">

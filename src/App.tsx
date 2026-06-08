@@ -9,7 +9,7 @@ import { Rotators } from './pages/Rotators';
 import { TrackableMessages } from './pages/TrackableMessages';
 import { PurchaseJourney } from './pages/PurchaseJourney';
 import { ConversionEvents } from './pages/ConversionEvents';
-import { PixelTriggers } from './pages/PixelTriggers';
+import { Triggers } from './pages/Triggers';
 import { WebhookTriggers } from './pages/WebhookTriggers';
 import { ClientAccess } from './pages/ClientAccess';
 import { ClientInfo } from './pages/ClientInfo';
@@ -77,7 +77,7 @@ export default function App() {
         <Route path="messages" element={<TrackableMessages />} />
         <Route path="journey" element={<PurchaseJourney />} />
         <Route path="events" element={<ConversionEvents />} />
-        <Route path="pixels" element={<PixelTriggers />} />
+        <Route path="pixels" element={<Triggers />} />
         <Route path="webhooks" element={<WebhookTriggers />} />
         <Route path="team" element={<ClientAccess />} />
         <Route path="client-info" element={<ClientInfo />} />
