@@ -22,14 +22,29 @@ export async function evaluateTriggers(opts: {
   });
   if (triggers.length === 0) return;
 
+  // Qual rotador originou esse lead (se houver) — pra escopo por rotador.
+  let leadRotatorId: string | null = null;
+  if (triggers.some((t) => t.rotator_id)) {
+    const click = await prisma.rotatorClick.findFirst({
+      where: { lead_id: leadId, status: 'matched' },
+      orderBy: { matched_at: 'desc' },
+      select: { rotator_id: true },
+    });
+    leadRotatorId = click?.rotator_id ?? null;
+  }
+
   const lowerText = (text || '').toLowerCase();
 
   for (const t of triggers) {
     // Filtro de direção (quem manda a frase)
     if (t.direction !== 'any' && t.direction !== direction) continue;
 
-    // Só leads atribuídos (rotador), se marcado
-    if (t.only_rotator && !hasAttribution) continue;
+    // Escopo: rotador específico > qualquer rotador > todos
+    if (t.rotator_id) {
+      if (leadRotatorId !== t.rotator_id) continue;
+    } else if (t.only_rotator && !hasAttribution) {
+      continue;
+    }
 
     // Condição do gatilho
     let matches = false;

@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Plus, Trash2, Pencil, Zap, MessageSquare, DoorOpen } from 'lucide-react';
@@ -21,11 +20,13 @@ type Trigger = {
   phrase: string | null;
   direction: string; // lead | attendant | any
   only_rotator: boolean;
+  rotator_id: string | null;
   active: boolean;
   _count?: { fired: number };
 };
 
-type FormState = Partial<Trigger>;
+type RotatorOpt = { id: string; name: string };
+type FormState = Partial<Trigger> & { scope?: string };
 
 const empty: FormState = {
   name: '',
@@ -37,6 +38,8 @@ const empty: FormState = {
   phrase: '',
   direction: 'lead',
   only_rotator: false,
+  rotator_id: null,
+  scope: 'all',
   active: true,
 };
 
@@ -45,23 +48,35 @@ const DIR_LABELS: Record<string, string> = { lead: 'Lead manda', attendant: 'Ate
 
 export function Triggers() {
   const [items, setItems] = useState<Trigger[]>([]);
+  const [rotators, setRotators] = useState<RotatorOpt[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<FormState>(empty);
 
   const load = () => {
     setLoading(true);
-    fetcher('/triggers').then(setItems).finally(() => setLoading(false));
+    Promise.all([fetcher('/triggers'), fetcher('/rotators')])
+      .then(([trg, rot]) => { setItems(trg); setRotators(rot); })
+      .finally(() => setLoading(false));
   };
   useEffect(load, []);
 
+  const scopeOf = (t: Trigger): string => (t.rotator_id ? t.rotator_id : t.only_rotator ? 'any_rotator' : 'all');
+  const rotatorName = (id: string | null) => rotators.find((r) => r.id === id)?.name || 'rotador';
+
   const openNew = () => { setForm(empty); setOpen(true); };
-  const openEdit = (t: Trigger) => { setForm({ ...t }); setOpen(true); };
+  const openEdit = (t: Trigger) => { setForm({ ...t, scope: scopeOf(t) }); setOpen(true); };
 
   const save = async () => {
     if (!form.name?.trim()) { alert('Dê um nome ao gatilho'); return; }
     if (form.trigger_type === 'phrase' && !form.phrase?.trim()) { alert('Defina a frase'); return; }
-    const payload = { ...form };
+    // Traduz scope -> only_rotator / rotator_id
+    const scope = form.scope || 'all';
+    const payload = {
+      ...form,
+      only_rotator: scope === 'any_rotator',
+      rotator_id: scope === 'all' || scope === 'any_rotator' ? null : scope,
+    };
     if (form.id) await putter(`/triggers/${form.id}`, payload);
     else await poster('/triggers', payload);
     setOpen(false); setForm(empty); load();
@@ -110,7 +125,9 @@ export function Triggers() {
               <TableRow key={t.id}>
                 <TableCell className="font-medium">
                   {t.name}
-                  {t.only_rotator && <Badge variant="outline" className="ml-2 text-[10px]">só rotador</Badge>}
+                  <div className="text-[11px] text-gray-400 mt-0.5">
+                    {t.rotator_id ? `Rotador: ${rotatorName(t.rotator_id)}` : t.only_rotator ? 'Qualquer rotador' : 'Todos os leads'}
+                  </div>
                 </TableCell>
                 <TableCell><Badge variant="secondary">{t.event_name}</Badge></TableCell>
                 <TableCell className="text-sm">
@@ -202,10 +219,19 @@ export function Triggers() {
               </>
             )}
 
-            <label className="flex items-center gap-2 cursor-pointer pt-1">
-              <Checkbox checked={!!form.only_rotator} onCheckedChange={(v) => setForm({ ...form, only_rotator: !!v })} />
-              <span className="text-sm">Só disparar para leads do rotador (com atribuição Meta)</span>
-            </label>
+            <div>
+              <Label>Aplicar a</Label>
+              <select
+                value={form.scope || 'all'}
+                onChange={(e) => setForm({ ...form, scope: e.target.value })}
+                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm mt-1"
+              >
+                <option value="all">Todos os leads (orgânico + rotador)</option>
+                <option value="any_rotator">Qualquer rotador (só atribuídos)</option>
+                {rotators.map((r) => <option key={r.id} value={r.id}>Rotador: {r.name}</option>)}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">Escolha se o evento vale pra todos, qualquer lead de rotador, ou um rotador específico.</p>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>

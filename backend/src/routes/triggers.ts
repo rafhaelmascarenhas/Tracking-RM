@@ -13,7 +13,7 @@ triggersRouter.get('/', async (req: Request, res: Response) => {
 });
 
 triggersRouter.post('/', async (req: Request, res: Response) => {
-  const { name, platform, event_name, value, currency, trigger_type, phrase, direction, only_rotator } = req.body;
+  const { name, platform, event_name, value, currency, trigger_type, phrase, direction, only_rotator, rotator_id } = req.body;
 
   if (!name || !event_name || !trigger_type) {
     return res.status(400).json({ error: 'name, event_name e trigger_type são obrigatórios' });
@@ -34,6 +34,7 @@ triggersRouter.post('/', async (req: Request, res: Response) => {
       phrase: trigger_type === 'phrase' ? phrase.trim() : null,
       direction: direction || 'any',
       only_rotator: !!only_rotator,
+      rotator_id: rotator_id || null,
     },
   });
   res.status(201).json(trigger);
@@ -45,7 +46,7 @@ triggersRouter.put('/:id', async (req: Request, res: Response) => {
   });
   if (!existing) return res.status(404).json({ error: 'Not found' });
 
-  const { name, platform, event_name, value, currency, trigger_type, phrase, direction, only_rotator, active } = req.body;
+  const { name, platform, event_name, value, currency, trigger_type, phrase, direction, only_rotator, rotator_id, active } = req.body;
 
   const trigger = await prisma.conversionTrigger.update({
     where: { id: existing.id },
@@ -59,6 +60,7 @@ triggersRouter.put('/:id', async (req: Request, res: Response) => {
       phrase: trigger_type === 'phrase' ? (phrase ?? existing.phrase) : trigger_type === 'conversation_open' ? null : existing.phrase,
       direction: direction ?? existing.direction,
       only_rotator: typeof only_rotator === 'boolean' ? only_rotator : existing.only_rotator,
+      rotator_id: rotator_id !== undefined ? (rotator_id || null) : existing.rotator_id,
       active: typeof active === 'boolean' ? active : existing.active,
     },
   });

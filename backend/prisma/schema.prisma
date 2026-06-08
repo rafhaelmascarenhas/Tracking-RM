@@ -224,7 +224,9 @@ model ConversionTrigger {
   trigger_type String   // conversation_open | phrase
   phrase       String?  // usado quando trigger_type = phrase
   direction    String   @default("any") // lead | attendant | any (quem manda a frase)
-  only_rotator Boolean  @default(false) // só dispara p/ leads com atribuição (fbclid)
+  // Escopo: rotator_id setado = só esse rotador; only_rotator = qualquer rotador; ambos vazios = todos os leads
+  only_rotator Boolean  @default(false)
+  rotator_id   String?
   active       Boolean  @default(true)
   created_at   DateTime @default(now())
 
