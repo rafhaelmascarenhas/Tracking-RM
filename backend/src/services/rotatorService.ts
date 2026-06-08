@@ -47,8 +47,8 @@ export async function pickTarget(rotatorId: string): Promise<TargetWithConnectio
 }
 
 const TOKEN_RE = /\[([a-f0-9]{6,10})\]/i;
-const FALLBACK_WINDOW_MS = 3 * 60 * 1000; // 3min — latência real anúncio→msg. Curto p/ evitar
-// casar lead orgânico com clique antigo (sem token/c2c não há sinal melhor de origem).
+const FALLBACK_WINDOW_MS = 30 * 60 * 1000; // 30min — seguro pq o fallback agora exige
+// que a msg contenha o texto do prefill (sinal de origem), não só janela de tempo.
 
 // User-agents de bots (crawler do Meta valida o link antes de aprovar o anúncio).
 // Esses cliques nunca devem casar com um lead real.
@@ -81,21 +81,34 @@ export async function matchRotatorClick(
     });
   }
 
-  // 2) Fallback por tempo. O uazapi não envia o marcador click_to_chat_link
-  // (c2c sempre false), então não dá pra exigir clickToChat — senão nada casa.
-  // Casa o clique não-bot mais recente no mesmo número dentro da janela e consome.
+  // 2) Fallback por TEXTO DO PREFILL. O uazapi não manda click_to_chat_link, então
+  // usamos o próprio texto pré-preenchido como sinal de origem: lead orgânico não
+  // digita "Olá! Vim pelo anúncio...". Se a msg contém o prefill de algum rotador
+  // desse número (mesmo sem o [código]), casa o clique pending mais recente.
   if (!click) {
-    const candidates = await prisma.rotatorClick.findMany({
-      where: {
-        connection_id: connectionId,
-        status: 'pending',
-        created_at: { gte: new Date(Date.now() - FALLBACK_WINDOW_MS) },
-      },
-      orderBy: { created_at: 'desc' },
-      take: 10,
+    const lower = (messageText || '').toLowerCase();
+    const targets = await prisma.rotatorTarget.findMany({
+      where: { connection_id: connectionId },
+      select: { rotator: { select: { prefilled_text: true } } },
     });
-    // Ignora cliques de bot (crawler do Meta).
-    click = candidates.find((c) => !isBotUserAgent(c.user_agent)) ?? null;
+    const fromAd = targets.some((t) => {
+      const pf = (t.rotator.prefilled_text || '').toLowerCase().trim();
+      // exige um trecho distintivo do prefill (>=12 chars) presente na mensagem
+      return pf.length >= 12 && lower.includes(pf.slice(0, 40));
+    });
+    if (fromAd) {
+      const candidates = await prisma.rotatorClick.findMany({
+        where: {
+          connection_id: connectionId,
+          status: 'pending',
+          created_at: { gte: new Date(Date.now() - FALLBACK_WINDOW_MS) },
+        },
+        orderBy: { created_at: 'desc' },
+        take: 10,
+      });
+      // Ignora cliques de bot (crawler do Meta).
+      click = candidates.find((c) => !isBotUserAgent(c.user_agent)) ?? null;
+    }
   }
 
   if (!click) return null;
