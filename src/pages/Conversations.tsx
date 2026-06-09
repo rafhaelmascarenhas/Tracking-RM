@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { MessageSquare, Download, Filter, Columns, Search, ChevronRight, PlayCircle, Shuffle, Smartphone } from 'lucide-react';
+import { MessageSquare, Download, Filter, Search, ChevronRight, Shuffle, Smartphone } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { fetcher, patcher } from '@/lib/fetcher';
@@ -40,6 +40,8 @@ export function Conversations() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [stages, setStages] = useState<{ id: string; name: string }[]>([]);
   const [originFilter, setOriginFilter] = useState<'all' | 'meta' | 'google' | 'untracked'>('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [convStage, setConvStage] = useState('');
   const [convValue, setConvValue] = useState('');
   const [marking, setMarking] = useState(false);
@@ -91,6 +93,8 @@ export function Conversations() {
     if (originFilter === 'meta' && !isMeta(l)) return false;
     if (originFilter === 'google' && !isGoogle(l)) return false;
     if (originFilter === 'untracked' && (l.utm_source || l.fbclid)) return false;
+    if (dateFrom && new Date(l.created_at) < new Date(dateFrom)) return false;
+    if (dateTo && new Date(l.created_at) > new Date(dateTo + 'T23:59:59')) return false;
     return true;
   });
 
@@ -101,33 +105,6 @@ export function Conversations() {
   const outras = total - meta - google - untracked;
   return (
    <div className="space-y-8">
-      <div className="flex items-start gap-5 bg-white border border-[#E5E5EA]/50 shadow-[0_2px_10px_rgba(0,0,0,0.02)] rounded-3xl p-6 mb-6">
-         <div className="w-16 h-16 bg-blue-50 rounded-2xl shrink-0 flex items-center justify-center">
-            <PlayCircle className="w-8 h-8 text-blue-600" />
-         </div>
-         
-         <div className="flex-1">
-            <div className="flex items-center gap-2 mb-1">
-               <span className="text-xs font-bold text-blue-600 tracking-wider uppercase">[RM] GUIA RÁPIDO</span>
-            </div>
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">
-               Descubra de onde vêm suas conversas e leads
-            </h2>
-            <p className="text-[15px] text-gray-500 max-w-3xl leading-relaxed mb-3">
-               Veja a origem de cada contato para entender quais canais e campanhas trazem mais resultados. Analise o caminho do lead desde o primeiro contato até a venda e otimize suas estratégias.
-            </p>
-            <p className="text-[14px] text-gray-500">
-               <a href="#" className="font-medium text-blue-600 hover:text-blue-700 transition-colors">Ver tutorial completo &rarr;</a>
-            </p>
-         </div>
-      </div>
-
-      <div className="flex justify-end mb-2">
-         <button className="text-blue-600 hover:text-blue-700 text-[14px] font-medium flex items-center gap-1 transition-colors">
-            Ver últimas atualizações <ChevronRight className="w-4 h-4" />
-         </button>
-      </div>
-
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
          <div className="bg-white rounded-3xl p-5 border border-gray-100/50 shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex flex-col gap-3">
             <div className="bg-gray-50 w-10 h-10 rounded-xl flex items-center justify-center">
@@ -180,15 +157,15 @@ export function Conversations() {
       </div>
 
       <div className="flex gap-4 items-center bg-white p-3 rounded-2xl shadow-[0_2px_10px_rgba(0,0,0,0.02)] border border-[#E5E5EA]/50">
-         <div className="flex bg-[#F5F5F7] p-1 rounded-full text-sm cursor-pointer">
-            <div className="flex items-center gap-2 bg-white px-4 py-1.5 rounded-full shadow-[0_1px_3px_rgba(0,0,0,0.06)] font-medium text-gray-900">
-               <Filter className="w-4 h-4" /> Lista
-            </div>
-            <div className="flex items-center gap-2 px-4 py-1.5 text-gray-500 font-medium hover:text-gray-700">
-               <Columns className="w-4 h-4" /> Colunas
-            </div>
+         <div className="flex items-center gap-2">
+            <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9 text-sm w-[150px] bg-[#F5F5F7] border-transparent focus:bg-white focus:border-blue-500 rounded-full px-3" />
+            <span className="text-gray-400 text-sm">até</span>
+            <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-9 text-sm w-[150px] bg-[#F5F5F7] border-transparent focus:bg-white focus:border-blue-500 rounded-full px-3" />
+            {(dateFrom || dateTo) && (
+              <button onClick={() => { setDateFrom(''); setDateTo(''); }} className="text-xs text-gray-400 hover:text-gray-600">limpar</button>
+            )}
          </div>
-         
+
          <div className="relative flex-1 max-w-xs">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Telefone ou nome" className="pl-9 bg-[#F5F5F7] border-transparent focus:bg-white focus:border-blue-500 rounded-full" />
@@ -210,9 +187,6 @@ export function Conversations() {
          </div>
 
          <div className="ml-auto flex items-center gap-4">
-            <div className="text-blue-600 font-medium text-[14px] flex items-center gap-1 cursor-pointer">
-               Filtros Salvos <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-            </div>
             <Button variant="outline" className="text-blue-600 border-transparent bg-blue-50 hover:bg-blue-100 rounded-full w-10 h-10 p-0 flex items-center justify-center">
                <Filter className="w-4 h-4" />
             </Button>
