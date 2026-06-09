@@ -15,6 +15,8 @@ type Lead = {
   utm_source?: string | null;
   utm_medium?: string | null;
   utm_campaign?: string | null;
+  utm_term?: string | null;
+  utm_content?: string | null;
   fbclid?: string | null;
   created_at: string;
   journeyStage?: { name: string } | null;
@@ -37,6 +39,7 @@ export function Conversations() {
   const [detail, setDetail] = useState<LeadDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [stages, setStages] = useState<{ id: string; name: string }[]>([]);
+  const [originFilter, setOriginFilter] = useState<'all' | 'meta' | 'google' | 'untracked'>('all');
   const [convStage, setConvStage] = useState('');
   const [convValue, setConvValue] = useState('');
   const [marking, setMarking] = useState(false);
@@ -77,10 +80,18 @@ export function Conversations() {
     }
   };
 
+  const isMeta = (l: Lead) => !!l.fbclid || /meta|facebook|instagram|fb|ig/i.test(l.utm_source || '');
+  const isGoogle = (l: Lead) => /google|adwords|gclid/i.test(l.utm_source || '');
+
   const filtered = leads.filter((l) => {
-    if (!search) return true;
-    const s = search.toLowerCase();
-    return l.phone_number.toLowerCase().includes(s) || (l.name || '').toLowerCase().includes(s);
+    if (search) {
+      const s = search.toLowerCase();
+      if (!(l.phone_number.toLowerCase().includes(s) || (l.name || '').toLowerCase().includes(s))) return false;
+    }
+    if (originFilter === 'meta' && !isMeta(l)) return false;
+    if (originFilter === 'google' && !isGoogle(l)) return false;
+    if (originFilter === 'untracked' && (l.utm_source || l.fbclid)) return false;
+    return true;
   });
 
   const total = leads.length;
@@ -183,12 +194,19 @@ export function Conversations() {
             <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Telefone ou nome" className="pl-9 bg-[#F5F5F7] border-transparent focus:bg-white focus:border-blue-500 rounded-full" />
          </div>
 
-         <div className="border border-gray-100 rounded-full px-5 py-2 text-[14px] text-gray-700 min-w-[180px] flex items-center shadow-[0_2px_8px_rgba(0,0,0,0.04)] cursor-pointer justify-between transition-all hover:bg-gray-50/50 font-medium bg-white">
-            <div className="flex items-center gap-2">
-              <MessageSquare className="w-4 h-4 text-gray-400" />
-              Todas as Origens
-            </div>
-            <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+         <div className="relative flex items-center border border-gray-100 rounded-full pl-5 pr-3 py-2 min-w-[180px] shadow-[0_2px_8px_rgba(0,0,0,0.04)] bg-white">
+            <MessageSquare className="w-4 h-4 text-gray-400 shrink-0" />
+            <select
+              value={originFilter}
+              onChange={(e) => setOriginFilter(e.target.value as typeof originFilter)}
+              className="appearance-none bg-transparent text-[14px] text-gray-700 font-medium pl-2 pr-6 outline-none cursor-pointer w-full"
+            >
+              <option value="all">Todas as Origens</option>
+              <option value="meta">Meta Ads</option>
+              <option value="google">Google Ads</option>
+              <option value="untracked">Não rastreada</option>
+            </select>
+            <svg className="w-4 h-4 text-gray-400 absolute right-3 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
          </div>
 
          <div className="ml-auto flex items-center gap-4">
@@ -272,12 +290,36 @@ export function Conversations() {
             <section>
               <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Origem</h3>
               <div className="rounded-2xl border border-gray-100 bg-gray-50/50 p-4 space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Campanha</span>
-                  <span className="font-medium text-gray-900">
-                    {[detail?.utm_source, detail?.utm_medium, detail?.utm_campaign].filter(Boolean).join(' · ') || 'Não rastreada'}
-                  </span>
-                </div>
+                {(() => {
+                  const rows: [string, string | null | undefined][] = [
+                    ['Origem', detail?.utm_source || (detail?.fbclid ? 'Meta' : null)],
+                    ['Campanha', detail?.utm_campaign],
+                    ['Conjunto', detail?.utm_term],
+                    ['Anúncio', detail?.utm_content],
+                  ];
+                  const any = rows.some(([, v]) => v);
+                  if (!any) {
+                    return <div className="flex justify-between"><span className="text-gray-500">Campanha</span><span className="text-gray-400">Não rastreada</span></div>;
+                  }
+                  return rows.filter(([, v]) => v).map(([label, v]) => (
+                    <div key={label} className="flex justify-between gap-3">
+                      <span className="text-gray-500 shrink-0">{label}</span>
+                      <span className="font-medium text-gray-900 text-right break-words">{v}</span>
+                    </div>
+                  ));
+                })()}
+                {detail?.fbclid && (
+                  <div className="flex justify-between items-start gap-3">
+                    <span className="text-gray-500 shrink-0">fbclid</span>
+                    <code
+                      onClick={() => navigator.clipboard.writeText(detail.fbclid!)}
+                      title="Clique para copiar"
+                      className="text-[11px] font-mono text-gray-600 break-all text-right cursor-pointer hover:text-blue-600 max-w-[220px]"
+                    >
+                      {detail.fbclid.length > 28 ? detail.fbclid.slice(0, 28) + '…' : detail.fbclid}
+                    </code>
+                  </div>
+                )}
                 {detail?.origin?.served_by && (
                   <div className="flex justify-between items-center">
                     <span className="text-gray-500 flex items-center gap-1"><Smartphone className="w-3.5 h-3.5" /> Atendido por</span>

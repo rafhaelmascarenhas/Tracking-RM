@@ -199,6 +199,11 @@ model RotatorClick {
   token         String?   @unique
   fbclid        String?
   gclid         String?
+  utm_source    String?
+  utm_medium    String?
+  utm_campaign  String?
+  utm_term      String?
+  utm_content   String?
   ip_address    String?
   user_agent    String?
   lead_id       String?

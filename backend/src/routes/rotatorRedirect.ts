@@ -102,6 +102,9 @@ async function handleRotator(req: Request, res: Response, short_code: string, fo
   const token = await uniqueToken();
   // Não registra clique de bot (crawler do Meta valida o link) — mantém pool e contador limpos.
   if (!isBot) {
+    // UTMs da URL do anúncio (params dinâmicos do Meta: {{campaign.name}} etc).
+    // Fallback p/ UTM configurado no rotador quando a URL não traz.
+    const q = req.query as Record<string, string | undefined>;
     await prisma.rotatorClick.create({
       data: {
         rotator_id: rotator.id,
@@ -109,6 +112,11 @@ async function handleRotator(req: Request, res: Response, short_code: string, fo
         token,
         fbclid: (req.query.fbclid as string) || null,
         gclid: (req.query.gclid as string) || null,
+        utm_source: q.utm_source || rotator.utm_source || null,
+        utm_medium: q.utm_medium || rotator.utm_medium || null,
+        utm_campaign: q.utm_campaign || rotator.utm_campaign || null,
+        utm_term: q.utm_term || rotator.utm_term || null,
+        utm_content: q.utm_content || rotator.utm_content || null,
         ip_address: (req.headers['x-forwarded-for'] as string) || req.ip || null,
         user_agent: ua,
       },

@@ -148,6 +148,14 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
             click_ip: click.ip_address,
             click_user_agent: click.user_agent,
             click_time: click.created_at,
+            // copia UTM do clique se o lead ainda não tem (não sobrescreve trackable msg)
+            ...(!lead.utm_source ? {
+              utm_source: click.utm_source,
+              utm_medium: click.utm_medium,
+              utm_campaign: click.utm_campaign,
+              utm_term: click.utm_term,
+              utm_content: click.utm_content,
+            } : {}),
           },
         });
         console.log('[webhook] MATCH rotator click', { lead: lead.id, fbclid: click.fbclid });
