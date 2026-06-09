@@ -78,6 +78,17 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
     const tokenInText = text.match(/\[([a-f0-9]{6,10})\]/i)?.[1] || '-';
     console.log(`[webhook] IN phone=${phone || '-'} inst=${instanceName || '-'} token=${tokenInText} c2c=${isClickToChat} text="${(text || '').slice(0, 40)}"`);
 
+    // DEBUG TEMPORÁRIO — descobrir se o uazapi expõe ctwa_clid/referral no CTWA nativo.
+    // Vasculha o payload inteiro por chaves de atribuição CTWA. Remover após mapear.
+    if (!fromMe) {
+      const raw = JSON.stringify(body);
+      if (/ctwa|referral|source_id|source_url|source_type|conversion_source/i.test(raw)) {
+        console.log('[webhook CTWA-PROBE] MATCH:', raw.slice(0, 3000));
+      } else {
+        console.log('[webhook CTWA-PROBE] sem chaves ctwa. msg=', JSON.stringify(msg).slice(0, 1500));
+      }
+    }
+
     if (!phone || !instanceName) {
       console.log('[webhook] SKIP sem phone/instance');
       return res.status(200).json({ ok: true, skipped: 'no phone/instance' });
