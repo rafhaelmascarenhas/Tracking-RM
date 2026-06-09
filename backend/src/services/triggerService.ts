@@ -2,6 +2,32 @@ import { prisma } from '../lib/prisma';
 import { enqueueCapiEvent } from '../lib/queue';
 
 /**
+ * Extrai valor monetário (R$) do texto. Usado em gatilhos de frase (ex: Purchase)
+ * onde o valor é relativo e escrito na própria msg do atendente, ex:
+ * "Parabéns pela sua compra no valor de 349,00".
+ * Prioriza R$ e "valor", depois qualquer número com centavos. Formato BR
+ * (ponto = milhar, vírgula = decimal). Retorna null se não achar valor confiável.
+ */
+export function parseMoneyBR(text: string): number | null {
+  if (!text) return null;
+  // Número BR: ou grupos de milhar com ponto (1.349), ou inteiro puro (2500); decimais ,## opcionais.
+  const patterns = [
+    /r\$\s*((?:\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{2})?)/i,                  // R$ 1.349,90 | R$ 349 | R$ 2500
+    /valor\s+(?:de\s+)?r?\$?\s*((?:\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{2})?)/i, // valor de 349,00 | valor 2500
+    /((?:\d{1,3}(?:\.\d{3})+|\d+),\d{2})/,                             // qualquer 349,00 | 1.349,90
+  ];
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m) {
+      const raw = m[1].replace(/\./g, '').replace(',', '.');
+      const v = parseFloat(raw);
+      if (!isNaN(v) && v > 0) return v;
+    }
+  }
+  return null;
+}
+
+/**
  * Avalia os gatilhos de conversão do workspace contra uma mensagem.
  * Dispara fireMetaCapi (via fila) quando bate, 1x por lead+gatilho.
  *
@@ -65,14 +91,22 @@ export async function evaluateTriggers(opts: {
       continue; // unique violation = já disparou pra esse lead
     }
 
+    // Valor relativo: gatilho de frase tenta extrair o valor escrito na msg
+    // (ex: "...compra no valor de 349,00"). Fallback pro valor fixo da config.
+    let value = t.value;
+    if (t.trigger_type === 'phrase') {
+      const parsed = parseMoneyBR(text);
+      if (parsed != null) value = parsed;
+    }
+
     await enqueueCapiEvent({
       leadId,
       eventName: t.event_name,
       platform: t.platform,
       workspaceId,
-      value: t.value,
+      value,
       currency: t.currency,
     });
-    console.log(`[trigger] FIRED ${t.event_name} (${t.name}) lead=${leadId} dir=${direction}`);
+    console.log(`[trigger] FIRED ${t.event_name} (${t.name}) lead=${leadId} dir=${direction} value=${value ?? '-'}`);
   }
 }
