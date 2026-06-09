@@ -166,6 +166,7 @@ model Rotator {
   landing_logo   String?
   landing_title  String?
   landing_cta    String?
+  redirect_seconds Int    @default(3) // contagem antes do auto-redirect (landing do link Meta)
   // Token na mensagem — false = usa só fallback 6h (sem código visível)
   hide_token     Boolean  @default(false)
   created_at     DateTime @default(now())

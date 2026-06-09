@@ -36,6 +36,7 @@ type Rotator = {
   landing_logo?: string | null;
   landing_title?: string | null;
   landing_cta?: string | null;
+  redirect_seconds?: number;
   hide_token: boolean;
   targets?: RotatorTarget[];
   _count?: { clicks: number; targets: number };
@@ -96,6 +97,7 @@ const empty: FormState = {
   landing_logo: '',
   landing_title: '',
   landing_cta: '',
+  redirect_seconds: 3,
   hide_token: false,
   form_targets: [],
 };
@@ -210,6 +212,7 @@ export function Rotators() {
       landing_logo: form.landing_logo || null,
       landing_title: form.landing_title || null,
       landing_cta: form.landing_cta || null,
+      redirect_seconds: form.redirect_seconds ?? 3,
       hide_token: form.hide_token ?? false,
       targets: form.form_targets.map(({ connection_id, weight }, i) => ({
         connection_id,
@@ -501,16 +504,27 @@ export function Rotators() {
             {/* TAB 3 — Landing Page */}
             <TabsContent value="landing" className="flex-1 overflow-y-auto space-y-3 pr-1">
               <div className="border rounded-lg p-3 bg-blue-50 border-blue-200">
-                <p className="text-xs text-blue-700">O link <strong>Meta</strong> (<code>/j/chat/xxx</code>) sempre abre a landing page. O toggle abaixo faz o link <strong>Direto</strong> (<code>/j/xxx</code>) também abrir a landing em vez de redirecionar automaticamente.</p>
+                <p className="text-xs text-blue-700">O link <strong>Meta</strong> (<code>/j/chat/xxx</code>) sempre abre a landing page — com <strong>contagem regressiva</strong> que redireciona sozinho (ou só botão, se marcar a opção abaixo). O link <strong>Direto</strong> (<code>/j/xxx</code>) segue o ajuste abaixo.</p>
               </div>
 
               <label className="flex items-center gap-3 cursor-pointer p-3 border rounded-lg hover:bg-gray-50">
                 <Checkbox checked={!!form.use_landing} onCheckedChange={(v) => setForm({ ...form, use_landing: !!v })} />
                 <div>
-                  <span className="text-sm font-medium">Usar landing page no link direto</span>
-                  <p className="text-xs text-gray-500 mt-0.5">Quando marcado, ambos os links abrem a página com botão. Quando desmarcado, o link direto redireciona instantaneamente.</p>
+                  <span className="text-sm font-medium">Usar landing page no link direto (com botão)</span>
+                  <p className="text-xs text-gray-500 mt-0.5">Marcado: os dois links abrem a landing com <strong>botão</strong> (o lead clica, sem contagem). Desmarcado: o link Direto redireciona <strong>na hora</strong>, e o link Meta abre a landing com <strong>contagem regressiva</strong>.</p>
                 </div>
               </label>
+
+              <div>
+                <Label>Segundos até redirecionar (contagem regressiva)</Label>
+                <Input
+                  type="number" min={0} max={60}
+                  value={form.redirect_seconds ?? 3}
+                  onChange={(e) => setForm({ ...form, redirect_seconds: e.target.value === '' ? 3 : Math.max(0, Math.min(60, Number(e.target.value))) })}
+                  className="mt-1 w-32"
+                />
+                <p className="text-xs text-gray-400 mt-1">Tempo na landing antes de abrir o WhatsApp. Só vale quando há contagem (link Meta com a opção acima <strong>desmarcada</strong>). 0 = imediato.</p>
+              </div>
 
               <div>
                 <Label>Logo da empresa</Label>

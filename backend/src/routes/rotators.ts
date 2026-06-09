@@ -122,6 +122,7 @@ rotatorsRouter.post('/', async (req: Request, res: Response) => {
     landing_title = null,
     landing_cta = null,
     hide_token = false,
+    redirect_seconds,
     targets = [],
   } = req.body as { targets?: TargetInput[] } & Record<string, any>;
 
@@ -149,6 +150,7 @@ rotatorsRouter.post('/', async (req: Request, res: Response) => {
       landing_title,
       landing_cta,
       hide_token,
+      redirect_seconds: redirect_seconds == null ? 3 : Math.max(0, Math.min(60, Number(redirect_seconds))),
       targets: { create: builtTargets },
     },
     include: { targets: true },
@@ -179,6 +181,7 @@ rotatorsRouter.put('/:id', async (req: Request, res: Response) => {
     landing_title,
     landing_cta,
     hide_token,
+    redirect_seconds,
     targets,
   } = req.body as { targets?: TargetInput[] } & Record<string, any>;
 
@@ -208,6 +211,7 @@ rotatorsRouter.put('/:id', async (req: Request, res: Response) => {
       landing_title: landing_title !== undefined ? landing_title : existing.landing_title,
       landing_cta: landing_cta !== undefined ? landing_cta : existing.landing_cta,
       hide_token: typeof hide_token === 'boolean' ? hide_token : existing.hide_token,
+      redirect_seconds: redirect_seconds == null ? existing.redirect_seconds : Math.max(0, Math.min(60, Number(redirect_seconds))),
     },
     include: { targets: true },
   });
