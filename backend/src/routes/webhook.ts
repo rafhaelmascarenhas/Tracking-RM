@@ -78,14 +78,17 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
     const tokenInText = text.match(/\[([a-f0-9]{6,10})\]/i)?.[1] || '-';
     console.log(`[webhook] IN phone=${phone || '-'} inst=${instanceName || '-'} token=${tokenInText} c2c=${isClickToChat} text="${(text || '').slice(0, 40)}"`);
 
-    // DEBUG TEMPORÁRIO — descobrir se o uazapi expõe ctwa_clid/referral no CTWA nativo.
-    // Vasculha o payload inteiro por chaves de atribuição CTWA. Remover após mapear.
+    // DEBUG TEMPORÁRIO — mapear atribuição CTWA do uazapi. track_id/track_source são
+    // campos próprios do uazapi (prováveis portadores do ctwa_clid). Remover após mapear.
     if (!fromMe) {
+      const m = msg as Record<string, any>;
+      console.log('[webhook CTWA-PROBE]',
+        'track_id=', JSON.stringify(m.track_id),
+        'track_source=', JSON.stringify(m.track_source),
+        'ctx=', JSON.stringify(m.content?.contextInfo || m.contextInfo || null));
       const raw = JSON.stringify(body);
       if (/ctwa|referral|source_id|source_url|source_type|conversion_source/i.test(raw)) {
-        console.log('[webhook CTWA-PROBE] MATCH:', raw.slice(0, 3000));
-      } else {
-        console.log('[webhook CTWA-PROBE] sem chaves ctwa. msg=', JSON.stringify(msg).slice(0, 1500));
+        console.log('[webhook CTWA-PROBE] FULL:', raw.slice(0, 3000));
       }
     }
 
