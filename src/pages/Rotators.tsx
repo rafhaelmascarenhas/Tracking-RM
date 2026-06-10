@@ -38,6 +38,7 @@ type Rotator = {
   landing_cta?: string | null;
   redirect_seconds?: number;
   hide_token: boolean;
+  distribute_offline: boolean;
   targets?: RotatorTarget[];
   _count?: { clicks: number; targets: number };
   _matched_clicks?: number;
@@ -99,6 +100,7 @@ const empty: FormState = {
   landing_cta: '',
   redirect_seconds: 3,
   hide_token: false,
+  distribute_offline: false,
   form_targets: [],
 };
 
@@ -214,6 +216,7 @@ export function Rotators() {
       landing_cta: form.landing_cta || null,
       redirect_seconds: form.redirect_seconds ?? 3,
       hide_token: form.hide_token ?? false,
+      distribute_offline: form.distribute_offline ?? false,
       targets: form.form_targets.map(({ connection_id, weight }, i) => ({
         connection_id,
         weight,
@@ -473,6 +476,13 @@ export function Rotators() {
                   </div>
                 )}
               </div>
+              <label className="flex items-start gap-3 cursor-pointer p-3 border rounded-lg hover:bg-gray-50 mt-1">
+                <Checkbox checked={!!form.distribute_offline} onCheckedChange={(v) => setForm({ ...form, distribute_offline: !!v })} className="mt-0.5" />
+                <div>
+                  <span className="text-sm font-medium">Distribuir para números offline</span>
+                  <p className="text-xs text-gray-500 mt-0.5">Inclui números com sessão desconectada no uazapi na distribuição normal. Útil quando o número ainda recebe mensagens mesmo com a sessão expirada.</p>
+                </div>
+              </label>
             </TabsContent>
 
             {/* TAB 2 — Mensagem */}

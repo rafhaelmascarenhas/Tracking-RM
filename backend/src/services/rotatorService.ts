@@ -16,7 +16,9 @@ export async function pickTarget(rotatorId: string): Promise<TargetWithConnectio
   if (!rotator) return null;
 
   const actives = rotator.targets.filter((t) => t.active);
-  let pool = actives.filter((t) => t.connection.status === 'CONNECTED');
+  let pool = rotator.distribute_offline
+    ? actives
+    : actives.filter((t) => t.connection.status === 'CONNECTED');
   if (pool.length === 0) {
     console.warn(`[rotator ${rotatorId}] nenhum número CONNECTED, usando fallback offline`);
     pool = actives;
