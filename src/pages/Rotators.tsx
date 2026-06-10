@@ -50,6 +50,11 @@ type RotatorClick = {
   connection_id: string;
   fbclid: string | null;
   gclid: string | null;
+  utm_source: string | null;
+  utm_medium: string | null;
+  utm_campaign: string | null;
+  utm_term: string | null;
+  utm_content: string | null;
   ip_address: string | null;
   user_agent: string | null;
   status: string;
@@ -82,6 +87,31 @@ function timeToConvert(c: RotatorClick): string {
   if (min < 1) return '<1min';
   if (min < 60) return `${min}min`;
   return `${Math.round(min / 60)}h`;
+}
+
+// Valor longo (fbclid/utm) com truncamento e "ver mais". Copiável.
+function ExpandableValue({ value, max = 24, mono = true, copyable = false }: { value: string | null; max?: number; mono?: boolean; copyable?: boolean }) {
+  const [open, setOpen] = useState(false);
+  if (!value) return <span className="text-gray-300">—</span>;
+  const long = value.length > max;
+  const shown = open || !long ? value : value.slice(0, max) + '…';
+  return (
+    <div className="flex items-start gap-1">
+      <span className={`${mono ? 'font-mono text-[11px]' : 'text-xs'} text-gray-600 leading-tight ${open ? 'break-all' : 'whitespace-nowrap'}`}>
+        {shown}
+      </span>
+      {copyable && (
+        <button onClick={() => navigator.clipboard.writeText(value)} title="Copiar" className="shrink-0 text-gray-400 hover:text-blue-600">
+          <Copy className="w-3 h-3" />
+        </button>
+      )}
+      {long && (
+        <button onClick={() => setOpen((o) => !o)} className="shrink-0 text-[10px] font-medium text-blue-600 hover:underline whitespace-nowrap">
+          {open ? 'ver menos' : 'ver mais'}
+        </button>
+      )}
+    </div>
+  );
 }
 
 type TargetEntry = { connection_id: string; weight: number };
@@ -663,15 +693,19 @@ export function Rotators() {
                 return <p className="text-sm text-gray-400 text-center py-10">Nenhum clique {clicksFilter === 'matched' ? 'casado' : clicksFilter === 'pending' ? 'pendente' : ''} no período.</p>;
               }
               return (
-                <Table>
+                <div className="rounded-xl border border-gray-200 overflow-x-auto">
+                <Table className="min-w-[1000px]">
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Data</TableHead>
-                      <TableHead>Origem</TableHead>
-                      <TableHead>Número</TableHead>
-                      <TableHead>Dispositivo</TableHead>
-                      <TableHead>fbclid</TableHead>
-                      <TableHead className="text-center">Conversão</TableHead>
+                      <TableHead className="whitespace-nowrap">Data</TableHead>
+                      <TableHead className="whitespace-nowrap">Origem</TableHead>
+                      <TableHead className="whitespace-nowrap">Número</TableHead>
+                      <TableHead className="whitespace-nowrap">Disp.</TableHead>
+                      <TableHead className="whitespace-nowrap">Campanha</TableHead>
+                      <TableHead className="whitespace-nowrap">Conjunto</TableHead>
+                      <TableHead className="whitespace-nowrap">Anúncio</TableHead>
+                      <TableHead className="whitespace-nowrap">fbclid</TableHead>
+                      <TableHead className="text-center whitespace-nowrap">Conversão</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -680,29 +714,19 @@ export function Rotators() {
                       const src = trafficSource(c);
                       const clickId = c.fbclid || c.gclid;
                       return (
-                        <TableRow key={c.id} className={c.status === 'matched' ? 'bg-green-50/30' : ''}>
+                        <TableRow key={c.id} className={c.status === 'matched' ? 'bg-green-50/30 align-top' : 'align-top'}>
                           <TableCell className="text-xs text-gray-600 whitespace-nowrap">
                             {new Date(c.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline" className={`text-xs ${src.cls}`}>{src.label}</Badge>
                           </TableCell>
-                          <TableCell className="text-sm">{num?.session_name || '—'}</TableCell>
+                          <TableCell className="text-sm whitespace-nowrap">{num?.session_name || '—'}</TableCell>
                           <TableCell className="text-xs text-gray-500">{deviceFromUA(c.user_agent)}</TableCell>
-                          <TableCell className="max-w-[320px]">
-                            {clickId ? (
-                              <div className="flex items-start gap-1">
-                                <code className="text-[11px] font-mono text-gray-600 break-all leading-tight">{clickId}</code>
-                                <button
-                                  onClick={() => navigator.clipboard.writeText(clickId)}
-                                  title="Copiar"
-                                  className="shrink-0 text-gray-400 hover:text-blue-600"
-                                >
-                                  <Copy className="w-3 h-3" />
-                                </button>
-                              </div>
-                            ) : <span className="text-gray-300">—</span>}
-                          </TableCell>
+                          <TableCell className="max-w-[200px]"><ExpandableValue value={c.utm_campaign} max={20} mono={false} /></TableCell>
+                          <TableCell className="max-w-[200px]"><ExpandableValue value={c.utm_term} max={20} mono={false} /></TableCell>
+                          <TableCell className="max-w-[200px]"><ExpandableValue value={c.utm_content} max={20} mono={false} /></TableCell>
+                          <TableCell className="max-w-[220px]"><ExpandableValue value={clickId} max={20} copyable /></TableCell>
                           <TableCell className="text-center">
                             {c.status === 'matched' ? (
                               <div className="flex flex-col items-center">
@@ -718,6 +742,7 @@ export function Rotators() {
                     })}
                   </TableBody>
                 </Table>
+                </div>
               );
             })()}
           </div>
