@@ -106,6 +106,8 @@ async function handleRotator(req: Request, res: Response, short_code: string, fo
     // UTMs da URL do anúncio (params dinâmicos do Meta: {{campaign.name}} etc).
     // Fallback p/ UTM configurado no rotador quando a URL não traz.
     const q = req.query as Record<string, string | undefined>;
+    // DEBUG TEMPORÁRIO — ver exatamente o que o Meta manda na query do clique.
+    console.log('[rotator CLICK-PROBE]', short_code, 'url=', req.originalUrl, 'query=', JSON.stringify(req.query));
     await prisma.rotatorClick.create({
       data: {
         rotator_id: rotator.id,
