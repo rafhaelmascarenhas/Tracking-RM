@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { MessageSquare, Download, Filter, Search, ChevronRight, Shuffle, Smartphone } from 'lucide-react';
+import { MessageSquare, Download, Filter, Search, ChevronRight, Shuffle, Smartphone, RefreshCw } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { fetcher, patcher } from '@/lib/fetcher';
@@ -46,11 +46,20 @@ export function Conversations() {
   const [convValue, setConvValue] = useState('');
   const [marking, setMarking] = useState(false);
 
+  const [refreshing, setRefreshing] = useState(false);
+
   const loadLeads = () => fetcher('/leads').then(setLeads).catch(console.error);
+
+  const refresh = () => {
+    setRefreshing(true);
+    loadLeads().finally(() => setRefreshing(false));
+  };
 
   useEffect(() => {
     loadLeads().finally(() => setLoading(false));
     fetcher('/journey-stages').then(setStages).catch(console.error);
+    const interval = setInterval(loadLeads, 30_000);
+    return () => clearInterval(interval);
   }, []);
 
   const openLead = (lead: Lead) => {
@@ -187,6 +196,9 @@ export function Conversations() {
          </div>
 
          <div className="ml-auto flex items-center gap-4">
+            <Button variant="outline" onClick={refresh} disabled={refreshing} title="Atualizar lista" className="text-blue-600 border-transparent bg-blue-50 hover:bg-blue-100 rounded-full w-10 h-10 p-0 flex items-center justify-center">
+               <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            </Button>
             <Button variant="outline" className="text-blue-600 border-transparent bg-blue-50 hover:bg-blue-100 rounded-full w-10 h-10 p-0 flex items-center justify-center">
                <Filter className="w-4 h-4" />
             </Button>
