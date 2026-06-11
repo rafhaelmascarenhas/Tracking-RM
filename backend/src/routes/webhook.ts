@@ -1,10 +1,22 @@
 import { Router, Request, Response } from 'express';
+import fs from 'fs';
+import path from 'path';
 import { prisma } from '../lib/prisma';
 import { matchTrackableMessage } from '../services/messageMatcher';
 import { matchRotatorClick } from '../services/rotatorService';
 import { evaluateTriggers } from '../services/triggerService';
 
 export const webhookRouter = Router();
+
+// PROBE TEMPORÁRIO — grava payload bruto completo de toda msg de lead pra mapear
+// atribuição CTWA (anúncio de mensagem direta). Remover após mapear o ctwa_clid.
+const CTWA_PROBE_FILE = path.join(process.cwd(), 'ctwa-probe.log');
+function probeRawPayload(phone: string, body: unknown) {
+  try {
+    const line = `\n===== ${new Date().toISOString()} phone=${phone} =====\n${JSON.stringify(body, null, 2)}\n`;
+    fs.appendFile(CTWA_PROBE_FILE, line, () => {});
+  } catch { /* best-effort */ }
+}
 
 // uazapiGO webhook format:
 // { EventType, instanceName, owner, token, message: { sender, fromMe, isGroup, text/content, ... }, chat: {...} }
@@ -86,10 +98,9 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
         'track_id=', JSON.stringify(m.track_id),
         'track_source=', JSON.stringify(m.track_source),
         'ctx=', JSON.stringify(m.content?.contextInfo || m.contextInfo || null));
-      const raw = JSON.stringify(body);
-      if (/ctwa|referral|source_id|source_url|source_type|conversion_source/i.test(raw)) {
-        console.log('[webhook CTWA-PROBE] FULL:', raw.slice(0, 3000));
-      }
+      // Grava payload bruto COMPLETO em arquivo — captura qualquer campo CTWA que o
+      // regex não preveja. Inspecionar com: grep -i 'ctwa\|referral\|source' ctwa-probe.log
+      probeRawPayload(phone, body);
     }
 
     if (!phone || !instanceName) {
