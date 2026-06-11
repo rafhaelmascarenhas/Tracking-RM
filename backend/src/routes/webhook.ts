@@ -162,14 +162,13 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
             click_ip: click.ip_address,
             click_user_agent: click.user_agent,
             click_time: click.created_at,
-            // copia UTM do clique se o lead ainda não tem (não sobrescreve trackable msg)
-            ...(!lead.utm_source ? {
-              utm_source: click.utm_source,
-              utm_medium: click.utm_medium,
-              utm_campaign: click.utm_campaign,
-              utm_term: click.utm_term,
-              utm_content: click.utm_content,
-            } : {}),
+            // Clique do rotador tem UTMs específicos do Meta (campanha/conjunto/anúncio).
+            // Sempre usa click como fonte primária; fallback pro que o lead já tinha.
+            utm_source: click.utm_source || lead.utm_source,
+            utm_medium: click.utm_medium || lead.utm_medium,
+            utm_campaign: click.utm_campaign || lead.utm_campaign,
+            utm_term: click.utm_term || lead.utm_term,
+            utm_content: click.utm_content || lead.utm_content,
           },
         });
         console.log('[webhook] MATCH rotator click', { lead: lead.id, fbclid: click.fbclid });
