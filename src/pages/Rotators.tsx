@@ -48,6 +48,9 @@ type RotatorClick = {
   id: string;
   token: string | null;
   connection_id: string;
+  lead_id: string | null;
+  lead_phone: string | null;
+  lead_name: string | null;
   fbclid: string | null;
   gclid: string | null;
   utm_source: string | null;
@@ -694,12 +697,13 @@ export function Rotators() {
               }
               return (
                 <div className="rounded-xl border border-gray-200 overflow-x-auto">
-                <Table className="min-w-[1000px]">
+                <Table className="min-w-[1150px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="whitespace-nowrap">Data</TableHead>
                       <TableHead className="whitespace-nowrap">Origem</TableHead>
                       <TableHead className="whitespace-nowrap">Número</TableHead>
+                      <TableHead className="whitespace-nowrap">Lead</TableHead>
                       <TableHead className="whitespace-nowrap">Disp.</TableHead>
                       <TableHead className="whitespace-nowrap">Campanha</TableHead>
                       <TableHead className="whitespace-nowrap">Conjunto</TableHead>
@@ -722,6 +726,14 @@ export function Rotators() {
                             <Badge variant="outline" className={`text-xs ${src.cls}`}>{src.label}</Badge>
                           </TableCell>
                           <TableCell className="text-sm whitespace-nowrap">{num?.session_name || '—'}</TableCell>
+                          <TableCell className="text-xs whitespace-nowrap">
+                            {c.lead_phone ? (
+                              <div className="flex flex-col">
+                                <span className="font-mono text-gray-700">{c.lead_phone}</span>
+                                {c.lead_name && <span className="text-gray-400 text-[11px] truncate max-w-[120px]">{c.lead_name}</span>}
+                              </div>
+                            ) : <span className="text-gray-300">—</span>}
+                          </TableCell>
                           <TableCell className="text-xs text-gray-500">{deviceFromUA(c.user_agent)}</TableCell>
                           <TableCell className="max-w-[200px]"><ExpandableValue value={c.utm_campaign} max={20} mono={false} /></TableCell>
                           <TableCell className="max-w-[200px]"><ExpandableValue value={c.utm_term} max={20} mono={false} /></TableCell>

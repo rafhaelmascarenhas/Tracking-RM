@@ -104,7 +104,18 @@ rotatorsRouter.get('/:id/clicks', async (req: Request, res: Response) => {
     take,
     skip,
   });
-  res.json(clicks);
+
+  const leadIds = clicks.map((c) => c.lead_id).filter(Boolean) as string[];
+  const leads = leadIds.length
+    ? await prisma.lead.findMany({ where: { id: { in: leadIds } }, select: { id: true, phone_number: true, name: true } })
+    : [];
+  const leadMap = Object.fromEntries(leads.map((l) => [l.id, l]));
+
+  res.json(clicks.map((c) => ({
+    ...c,
+    lead_phone: c.lead_id ? (leadMap[c.lead_id]?.phone_number ?? null) : null,
+    lead_name: c.lead_id ? (leadMap[c.lead_id]?.name ?? null) : null,
+  })));
 });
 
 rotatorsRouter.post('/', async (req: Request, res: Response) => {

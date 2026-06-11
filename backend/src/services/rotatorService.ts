@@ -49,8 +49,7 @@ export async function pickTarget(rotatorId: string): Promise<TargetWithConnectio
 }
 
 const TOKEN_RE = /\[([a-f0-9]{6,10})\]/i;
-const FALLBACK_WINDOW_MS = 30 * 60 * 1000; // 30min — seguro pq o fallback agora exige
-// que a msg contenha o texto do prefill (sinal de origem), não só janela de tempo.
+const FALLBACK_WINDOW_MS = 6 * 60 * 60 * 1000; // 6h — lead pode demorar pra mandar msg após clicar
 
 // User-agents de bots (crawler do Meta valida o link antes de aprovar o anúncio).
 // Esses cliques nunca devem casar com um lead real.

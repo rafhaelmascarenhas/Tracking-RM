@@ -118,7 +118,7 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
           leadId: existingLead.id,
           text,
           direction: 'attendant',
-          hasAttribution: !!existingLead.fbclid,
+          hasAttribution: !!(existingLead.fbclid || existingLead.click_time),
         });
       }
       return res.json({ ok: true, handled: 'outbound' });
@@ -192,7 +192,7 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
       leadId: lead.id,
       text: text || '',
       direction: 'lead',
-      hasAttribution: !!lead.fbclid,
+      hasAttribution: !!(lead.fbclid || lead.click_time),
     });
 
     return res.json({ ok: true, lead_id: lead.id });
