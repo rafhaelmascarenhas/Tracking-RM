@@ -18,6 +18,7 @@ type Lead = {
   utm_term?: string | null;
   utm_content?: string | null;
   fbclid?: string | null;
+  ctwa_clid?: string | null;
   created_at: string;
   journeyStage?: { name: string } | null;
 };
@@ -91,7 +92,7 @@ export function Conversations() {
     }
   };
 
-  const isMeta = (l: Lead) => !!l.fbclid || /meta|facebook|instagram|fb|ig/i.test(l.utm_source || '');
+  const isMeta = (l: Lead) => !!l.fbclid || !!l.ctwa_clid || /meta|facebook|instagram|fb|ig/i.test(l.utm_source || '');
   const isGoogle = (l: Lead) => /google|adwords|gclid/i.test(l.utm_source || '');
 
   const filtered = leads.filter((l) => {
@@ -101,16 +102,16 @@ export function Conversations() {
     }
     if (originFilter === 'meta' && !isMeta(l)) return false;
     if (originFilter === 'google' && !isGoogle(l)) return false;
-    if (originFilter === 'untracked' && (l.utm_source || l.fbclid)) return false;
+    if (originFilter === 'untracked' && (l.utm_source || l.fbclid || l.ctwa_clid)) return false;
     if (dateFrom && new Date(l.created_at) < new Date(dateFrom)) return false;
     if (dateTo && new Date(l.created_at) > new Date(dateTo + 'T23:59:59')) return false;
     return true;
   });
 
   const total = leads.length;
-  const meta = leads.filter((l) => /meta|facebook|instagram/i.test(l.utm_source || '')).length;
+  const meta = leads.filter((l) => isMeta(l)).length;
   const google = leads.filter((l) => /google/i.test(l.utm_source || '')).length;
-  const untracked = leads.filter((l) => !l.utm_source).length;
+  const untracked = leads.filter((l) => !l.utm_source && !l.fbclid && !l.ctwa_clid).length;
   const outras = total - meta - google - untracked;
   return (
    <div className="space-y-8">
@@ -241,8 +242,9 @@ export function Conversations() {
                   <TableCell className="font-medium">{l.name || l.phone_number}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      {l.utm_source || <span className="text-gray-400">Não rastreada</span>}
+                      {l.utm_source || (l.ctwa_clid ? 'Meta Direto' : null) || <span className="text-gray-400">Não rastreada</span>}
                       {l.fbclid && <Badge variant="default" className="bg-[#0866FF] text-white">Meta ✓</Badge>}
+                      {!l.fbclid && l.ctwa_clid && <Badge variant="default" className="bg-[#0866FF] text-white">Meta CTWA ✓</Badge>}
                     </div>
                   </TableCell>
                   <TableCell>{l.journeyStage?.name || '-'}</TableCell>
@@ -278,7 +280,7 @@ export function Conversations() {
               <div className="rounded-2xl border border-gray-100 bg-gray-50/50 p-4 space-y-2 text-sm">
                 {(() => {
                   const rows: [string, string | null | undefined][] = [
-                    ['Origem', detail?.utm_source || (detail?.fbclid ? 'Meta' : null)],
+                    ['Origem', detail?.utm_source || (detail?.fbclid ? 'Meta' : null) || (detail?.ctwa_clid ? 'Meta Direto' : null)],
                     ['Campanha', detail?.utm_campaign],
                     ['Conjunto', detail?.utm_term],
                     ['Anúncio', detail?.utm_content],
@@ -306,6 +308,18 @@ export function Conversations() {
                     </code>
                   </div>
                 )}
+                {detail?.ctwa_clid && (
+                  <div className="flex justify-between items-start gap-3">
+                    <span className="text-gray-500 shrink-0">ctwa_clid</span>
+                    <code
+                      onClick={() => navigator.clipboard.writeText(detail.ctwa_clid!)}
+                      title="Clique para copiar"
+                      className="text-[11px] font-mono text-gray-600 break-all text-right cursor-pointer hover:text-blue-600 max-w-[220px]"
+                    >
+                      {detail.ctwa_clid.length > 28 ? detail.ctwa_clid.slice(0, 28) + '…' : detail.ctwa_clid}
+                    </code>
+                  </div>
+                )}
                 {detail?.origin?.served_by && (
                   <div className="flex justify-between items-center">
                     <span className="text-gray-500 flex items-center gap-1"><Smartphone className="w-3.5 h-3.5" /> Atendido por</span>
@@ -325,6 +339,8 @@ export function Conversations() {
                   <span className="text-gray-500">Atribuição</span>
                   {detail?.fbclid || detail?.origin?.meta_attributed ? (
                     <Badge variant="default" className="bg-[#0866FF] text-white">Meta ✓</Badge>
+                  ) : detail?.ctwa_clid ? (
+                    <Badge variant="default" className="bg-[#0866FF] text-white">Meta CTWA ✓</Badge>
                   ) : (
                     <Badge variant="secondary">Sem atribuição Meta</Badge>
                   )}
@@ -355,8 +371,8 @@ export function Conversations() {
               <Button onClick={markConversion} disabled={marking} className="w-full bg-[#0866FF] text-white">
                 {marking ? 'Enviando...' : 'Marcar conversão e enviar ao Meta'}
               </Button>
-              {!detail?.fbclid && !detail?.origin?.meta_attributed && (
-                <p className="text-[11px] text-amber-600">Lead sem atribuição Meta (fbclid) — evento envia, mas sem casar com o clique do anúncio.</p>
+              {!detail?.fbclid && !detail?.ctwa_clid && !detail?.origin?.meta_attributed && (
+                <p className="text-[11px] text-amber-600">Lead sem atribuição Meta — evento envia, mas sem casar com o clique do anúncio.</p>
               )}
             </section>
 
