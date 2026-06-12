@@ -10,8 +10,9 @@ interface MetaCapiPayload {
     medium?: string | null;
     campaign?: string | null;
   };
-  // Atribuição fina (Fase 2 — rotador). Sem ctwa_clid no caminho Tráfego→URL.
+  // Atribuição fina — rotador (tráfego→URL) ou CTWA (anúncio msg direta)
   fbclid?: string | null;
+  ctwaClid?: string | null;
   clientIp?: string | null;
   userAgent?: string | null;
   clickTimeMs?: number | null;
@@ -26,15 +27,17 @@ function sha256(value: string): string {
 }
 
 export async function fireMetaCapi(payload: MetaCapiPayload): Promise<void> {
-  const { pixelId, token, eventName, phone, utms, fbclid, clientIp, userAgent, clickTimeMs, eventId, value, currency } = payload;
+  const { pixelId, token, eventName, phone, utms, fbclid, ctwaClid, clientIp, userAgent, clickTimeMs, eventId, value, currency } = payload;
 
   const normalizedPhone = phone.replace(/\D/g, '');
 
-  // fbc = fb.1.<click_timestamp_ms>.<fbclid> (substitui ctwa_clid neste fluxo)
+  // fbc = fb.1.<click_timestamp_ms>.<fbclid> — fluxo rotador (URL com fbclid)
   const fbc = fbclid ? `fb.1.${clickTimeMs || Date.now()}.${fbclid}` : undefined;
 
   const userData: Record<string, unknown> = { ph: [sha256(normalizedPhone)] };
   if (fbc) userData.fbc = fbc;
+  // ctwa_clid — atribuição de anúncio de mensagem direta (Click to WhatsApp)
+  if (ctwaClid) userData.ctwa_clid = ctwaClid;
   if (clientIp) userData.client_ip_address = clientIp;
   if (userAgent) userData.client_user_agent = userAgent;
 
@@ -43,8 +46,10 @@ export async function fireMetaCapi(payload: MetaCapiPayload): Promise<void> {
       {
         event_name: eventName,
         event_time: Math.floor(Date.now() / 1000),
-        // 'website' quando temos fbc (origem foi clique em URL); senão mantém system_generated
-        action_source: fbc ? 'website' : 'system_generated',
+        // fbc = clique em URL (rotador) → 'website'
+        // ctwa_clid = anúncio msg direta → 'business_messaging'
+        // orgânico → 'system_generated'
+        action_source: fbc ? 'website' : ctwaClid ? 'business_messaging' : 'system_generated',
         ...(eventId ? { event_id: eventId } : {}),
         user_data: userData,
         custom_data: {

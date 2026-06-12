@@ -63,6 +63,8 @@ model Lead {
   click_ip               String?
   click_user_agent       String?
   click_time             DateTime?
+  // Atribuição CTWA (anúncio de mensagem direta — Click to WhatsApp)
+  ctwa_clid              String?
   created_at             DateTime @default(now())
 
   workspace    Workspace     @relation(fields: [workspace_id], references: [id], onDelete: Cascade)

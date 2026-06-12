@@ -29,6 +29,7 @@ async function processCapiJob(data: CapiJobData) {
         campaign: lead.utm_campaign,
       },
       fbclid: lead.fbclid,
+      ctwaClid: lead.ctwa_clid,
       clientIp: lead.click_ip,
       userAgent: lead.click_user_agent,
       clickTimeMs: lead.click_time ? lead.click_time.getTime() : null,

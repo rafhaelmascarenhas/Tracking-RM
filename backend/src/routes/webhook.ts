@@ -129,7 +129,7 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
           leadId: existingLead.id,
           text,
           direction: 'attendant',
-          hasAttribution: !!(existingLead.fbclid || existingLead.click_time),
+          hasAttribution: !!(existingLead.fbclid || existingLead.click_time || existingLead.ctwa_clid),
         });
       }
       return res.json({ ok: true, handled: 'outbound' });
@@ -144,6 +144,19 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
       update: contactName ? { name: contactName } : {},
       create: { workspace_id: workspaceId, phone_number: phone, name: contactName || null },
     });
+
+    // Atribuição CTWA — anúncio de mensagem direta (Click to WhatsApp)
+    const ctxInfo: Record<string, any> =
+      (typeof msg.content === 'object' ? msg.content?.contextInfo : null) ||
+      msg.contextInfo || {};
+    const ctwaClid: string = ctxInfo?.externalAdReply?.ctwaClid || '';
+    if (ctwaClid && !lead.ctwa_clid) {
+      lead = await prisma.lead.update({
+        where: { id: lead.id },
+        data: { ctwa_clid: ctwaClid },
+      });
+      console.log('[webhook] CTWA attribution', { lead: lead.id, ctwaClid: ctwaClid.slice(0, 20) + '…' });
+    }
 
     // Atribuição UTM via mensagem rastreável (só se ainda sem UTM)
     if (text && !lead.utm_source) {
@@ -202,7 +215,7 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
       leadId: lead.id,
       text: text || '',
       direction: 'lead',
-      hasAttribution: !!(lead.fbclid || lead.click_time),
+      hasAttribution: !!(lead.fbclid || lead.click_time || lead.ctwa_clid),
     });
 
     return res.json({ ok: true, lead_id: lead.id });
