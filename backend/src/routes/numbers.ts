@@ -82,6 +82,33 @@ numbersRouter.post('/', async (req: Request, res: Response) => {
   }
 });
 
+// Re-inicializa a instância na uazapi e atualiza o token no DB.
+// Útil quando o token salvo fica inválido (ex: uazapi reiniciou e regenerou tokens).
+numbersRouter.post('/:id/reinit', async (req: Request, res: Response) => {
+  try {
+    const conn = await prisma.whatsappConnection.findFirst({
+      where: { id: req.params.id, workspace_id: req.workspaceId! },
+    });
+    if (!conn) return res.status(404).json({ error: 'Not found' });
+
+    const cfg = await getWorkspaceUazapi(req.workspaceId!);
+    const token = await initInstance(cfg, conn.session_name);
+
+    await prisma.whatsappConnection.update({
+      where: { id: conn.id },
+      data: { uazapi_token: token },
+    });
+
+    await setWebhook(cfg, token, webhookUrl(req)).catch((e) => {
+      console.warn('setWebhook pós-reinit falhou:', e.message);
+    });
+
+    res.json({ ok: true, token_updated: true });
+  } catch (e) {
+    handleErr(res, e);
+  }
+});
+
 // Re-aplica o webhook na instância (corrige números criados antes do fix do endpoint).
 numbersRouter.post('/:id/sync-webhook', async (req: Request, res: Response) => {
   try {

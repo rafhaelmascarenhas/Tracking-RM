@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Plus, Settings, Trash2, QrCode, Loader2, CheckCircle2 } from 'lucide-react';
+import { Plus, Settings, Trash2, QrCode, Loader2, CheckCircle2, RefreshCw } from 'lucide-react';
 import { fetcher, poster, deleter } from '@/lib/fetcher';
 
 type Conn = {
@@ -29,9 +29,24 @@ function QrDialog({ conn, onClose, onConnected }: { conn: Conn; onClose: () => v
   const [qrcode, setQrcode] = useState<string | null>(null);
   const [status, setStatus] = useState(conn.status);
   const [error, setError] = useState<string | null>(null);
+  const [reiniting, setReiniting] = useState(false);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stop = () => { if (timer.current) clearInterval(timer.current); timer.current = null; };
+
+  const reinitAndRetry = async () => {
+    setReiniting(true);
+    setError(null);
+    try {
+      await poster(`/numbers/${conn.id}/reinit`);
+    } catch (e: any) {
+      setError(`Falha ao sincronizar token: ${e.message}`);
+      setReiniting(false);
+      return;
+    }
+    setReiniting(false);
+    start();
+  };
 
   const start = async () => {
     setError(null);
@@ -41,7 +56,13 @@ function QrDialog({ conn, onClose, onConnected }: { conn: Conn; onClose: () => v
       setStatus(s.status);
       if (s.status === 'CONNECTED') { onConnected(); return; }
     } catch (e: any) {
-      setError(e.message || 'Falha ao iniciar conexão');
+      const msg: string = e.message || 'Falha ao iniciar conexão';
+      // Token inválido — uazapi regenerou o token. Mostra botão pra sincronizar.
+      if (msg.includes('401') || msg.includes('Invalid token') || msg.includes('invalid token')) {
+        setError('Token inválido. Clique em "Sincronizar token" para corrigir.');
+      } else {
+        setError(msg);
+      }
       return;
     }
     stop();
@@ -68,7 +89,17 @@ function QrDialog({ conn, onClose, onConnected }: { conn: Conn; onClose: () => v
           {error ? (
             <div className="text-center space-y-3">
               <p className="text-sm text-red-500">{error}</p>
-              <Button onClick={start}>Tentar de novo</Button>
+              {error.includes('Sincronizar token') ? (
+                <div className="flex flex-col gap-2 items-center">
+                  <Button onClick={reinitAndRetry} disabled={reiniting}>
+                    {reiniting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                    {reiniting ? 'Sincronizando...' : 'Sincronizar token'}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={start}>Tentar de novo sem sincronizar</Button>
+                </div>
+              ) : (
+                <Button onClick={start}>Tentar de novo</Button>
+              )}
             </div>
           ) : status === 'CONNECTED' ? (
             <div className="text-center space-y-2">
