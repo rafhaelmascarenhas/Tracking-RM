@@ -5,7 +5,7 @@ module.exports = {
       script: 'backend/dist/index.js',
       cwd: '/var/www/tracking-rm',
       env: {
-        NODE_ENV: 'production',
+        NODE_ENV: 'development',
       },
     },
   ],
