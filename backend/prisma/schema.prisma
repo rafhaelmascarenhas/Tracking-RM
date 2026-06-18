@@ -39,6 +39,7 @@ model WhatsappConnection {
   phone_number String?
   uazapi_token String?  // token da instância retornado pela uazapi no init
   profile_name String?  // nome do perfil WhatsApp após conectar
+  is_imported  Boolean  @default(false) // true = importado por token externo; não apaga da uazapi ao deletar
   created_at   DateTime @default(now())
 
   workspace      Workspace       @relation(fields: [workspace_id], references: [id], onDelete: Cascade)

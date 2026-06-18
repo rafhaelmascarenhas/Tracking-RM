@@ -119,6 +119,7 @@ numbersRouter.post('/import-token', async (req: Request, res: Response) => {
         profile_name: s.profileName || null,
         uazapi_token: token,
         status: s.status,
+        is_imported: true,
       },
     });
     res.status(201).json(conn);
@@ -253,7 +254,7 @@ numbersRouter.delete('/:id', async (req: Request, res: Response) => {
     });
     if (!conn) return res.status(404).json({ error: 'Not found' });
 
-    if (conn.uazapi_token) {
+    if (conn.uazapi_token && !conn.is_imported) {
       const cfg = await getWorkspaceUazapi(req.workspaceId!).catch(() => null);
       if (cfg) await deleteInstance(cfg, conn.uazapi_token).catch((e) => console.warn('deleteInstance:', e.message));
     }
