@@ -11,6 +11,8 @@ import {
   UazapiError,
 } from '../services/uazapi';
 
+const TOKEN_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export const numbersRouter = Router();
 
 // URL pública que a uazapi vai chamar. Em produção defina PUBLIC_BASE_URL.
@@ -74,6 +76,49 @@ numbersRouter.post('/', async (req: Request, res: Response) => {
         phone_number: phone_number || null,
         uazapi_token: token,
         status: 'DISCONNECTED',
+      },
+    });
+    res.status(201).json(conn);
+  } catch (e) {
+    handleErr(res, e);
+  }
+});
+
+// Importa um número JÁ conectado na uazapi, usando o token da instância.
+// Não lê QR e NÃO mexe no webhook (pra não roubar de outro sistema que use o
+// mesmo número). Só registra a conexão pra ler/enviar via token.
+numbersRouter.post('/import-token', async (req: Request, res: Response) => {
+  try {
+    const { session_name, uazapi_token } = req.body as { session_name?: string; uazapi_token?: string };
+    const name = session_name?.trim();
+    const token = uazapi_token?.trim();
+    if (!name) return res.status(400).json({ error: 'Nome da sessão obrigatório' });
+    if (!token || !TOKEN_RE.test(token)) {
+      return res.status(400).json({ error: 'Token inválido. Cole o Instance Token da uazapi (formato UUID).' });
+    }
+
+    const cfg = await getWorkspaceUazapi(req.workspaceId!);
+
+    // Valida o token consultando o status. Se for inválido, a uazapi retorna 401.
+    let s;
+    try {
+      s = await getStatus(cfg, token);
+    } catch (e: any) {
+      const msg: string = e?.message || '';
+      if (msg.includes('401') || /invalid token/i.test(msg)) {
+        return res.status(400).json({ error: 'Token rejeitado pela uazapi (401). Confira se copiou o Instance Token certo.' });
+      }
+      throw e;
+    }
+
+    const conn = await prisma.whatsappConnection.create({
+      data: {
+        workspace_id: req.workspaceId!,
+        session_name: name,
+        phone_number: s.phone || null,
+        profile_name: s.profileName || null,
+        uazapi_token: token,
+        status: s.status,
       },
     });
     res.status(201).json(conn);

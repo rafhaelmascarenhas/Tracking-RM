@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Plus, Settings, Trash2, QrCode, Loader2, CheckCircle2, RefreshCw } from 'lucide-react';
+import { Plus, Settings, Trash2, QrCode, Loader2, CheckCircle2, RefreshCw, KeyRound } from 'lucide-react';
 import { fetcher, poster, deleter } from '@/lib/fetcher';
 
 type Conn = {
@@ -133,6 +133,13 @@ export function Numbers() {
   const [name, setName] = useState('');
   const [qrConn, setQrConn] = useState<Conn | null>(null);
 
+  // Import por token (avançado / discreto)
+  const [tokenOpen, setTokenOpen] = useState(false);
+  const [tokenName, setTokenName] = useState('');
+  const [tokenValue, setTokenValue] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [tokenErr, setTokenErr] = useState<string | null>(null);
+
   const load = () => {
     setLoading(true);
     fetcher('/numbers').then(setItems).finally(() => setLoading(false));
@@ -159,6 +166,21 @@ export function Numbers() {
     await deleter(`/numbers/${id}`); load();
   };
 
+  const importToken = async () => {
+    if (!tokenName.trim()) { setTokenErr('Dê um nome ao número'); return; }
+    if (!tokenValue.trim()) { setTokenErr('Cole o Instance Token'); return; }
+    setImporting(true); setTokenErr(null);
+    try {
+      await poster('/numbers/import-token', { session_name: tokenName.trim(), uazapi_token: tokenValue.trim() });
+      setTokenOpen(false); setTokenName(''); setTokenValue('');
+      load();
+    } catch (e: any) {
+      setTokenErr(e.message || 'Erro ao importar');
+    } finally {
+      setImporting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -166,23 +188,66 @@ export function Numbers() {
           <h1 className="text-3xl font-bold tracking-tight">Números WhatsApp</h1>
           <p className="text-muted-foreground mt-1">Conecte números lendo o QR code. Usados em rotadores e rastreamento.</p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild><Button><Plus className="mr-2 h-4 w-4" /> Adicionar número</Button></DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Novo número</DialogTitle>
-              <DialogDescription>Dê um nome (ex: Vendas SP). Criamos a instância e abrimos o QR na hora.</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-2 py-4">
-              <Label>Nome do número</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="ex: vendas-sp" onKeyDown={(e) => e.key === 'Enter' && create()} />
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-              <Button onClick={create} disabled={creating}>{creating ? 'Criando...' : 'Criar e conectar'}</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <div className="flex flex-col items-end gap-1">
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild><Button><Plus className="mr-2 h-4 w-4" /> Adicionar número</Button></DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Novo número</DialogTitle>
+                <DialogDescription>Dê um nome (ex: Vendas SP). Criamos a instância e abrimos o QR na hora.</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-2 py-4">
+                <Label>Nome do número</Label>
+                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="ex: vendas-sp" onKeyDown={(e) => e.key === 'Enter' && create()} />
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
+                <Button onClick={create} disabled={creating}>{creating ? 'Criando...' : 'Criar e conectar'}</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* Avançado: conectar um número que já existe na uazapi, via token. Discreto. */}
+          <Dialog open={tokenOpen} onOpenChange={(o) => { setTokenOpen(o); if (!o) setTokenErr(null); }}>
+            <DialogTrigger asChild>
+              <button className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 transition-colors">
+                <KeyRound className="h-3 w-3" /> Conectar por token
+              </button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Conectar por token</DialogTitle>
+                <DialogDescription>
+                  Para um número já conectado na uazapi. Cole o Instance Token — não lê QR e não altera o webhook existente.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3 py-4">
+                <div className="space-y-2">
+                  <Label>Nome do número</Label>
+                  <Input value={tokenName} onChange={(e) => setTokenName(e.target.value)} placeholder="ex: numero-adler" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Instance Token</Label>
+                  <Input
+                    value={tokenValue}
+                    onChange={(e) => setTokenValue(e.target.value)}
+                    placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                    className="font-mono text-sm"
+                    onKeyDown={(e) => e.key === 'Enter' && importToken()}
+                  />
+                  <p className="text-xs text-muted-foreground">Painel uazapi → instância → Instance Token</p>
+                </div>
+                {tokenErr && <p className="text-xs text-red-500">{tokenErr}</p>}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setTokenOpen(false)}>Cancelar</Button>
+                <Button onClick={importToken} disabled={importing}>
+                  {importing ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Importando...</> : 'Importar'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       <Card>
