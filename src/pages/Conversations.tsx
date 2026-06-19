@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { MessageSquare, Download, Filter, Search, ChevronRight, Shuffle, Smartphone, RefreshCw } from 'lucide-react';
+import { MessageSquare, Download, Filter, Search, ChevronRight, Shuffle, Smartphone, RefreshCw, ChevronLeft } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { fetcher, patcher } from '@/lib/fetcher';
@@ -21,6 +21,7 @@ type Lead = {
   ctwa_clid?: string | null;
   created_at: string;
   journeyStage?: { name: string } | null;
+  whatsappConnection?: { session_name: string; phone_number: string | null } | null;
 };
 
 type LeadDetail = Lead & {
@@ -31,6 +32,8 @@ type LeadDetail = Lead & {
     meta_attributed: boolean;
   } | null;
 };
+
+const LIMIT = 50;
 
 export function Conversations() {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -46,22 +49,72 @@ export function Conversations() {
   const [convStage, setConvStage] = useState('');
   const [convValue, setConvValue] = useState('');
   const [marking, setMarking] = useState(false);
-
   const [refreshing, setRefreshing] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [stats, setStats] = useState({ total: 0, meta: 0, untracked: 0 });
 
-  const loadLeads = () => fetcher('/leads').then(setLeads).catch(console.error);
+  // Refs para valores atuais dentro de callbacks/intervals
+  const searchRef = useRef('');
+  const dateFromRef = useRef('');
+  const dateToRef = useRef('');
+  const pageRef = useRef(1);
+  searchRef.current = search;
+  dateFromRef.current = dateFrom;
+  dateToRef.current = dateTo;
+  pageRef.current = page;
+
+  const buildUrl = (p: number) => {
+    const q = new URLSearchParams({ page: String(p), limit: String(LIMIT) });
+    if (searchRef.current.trim()) q.set('search', searchRef.current.trim());
+    if (dateFromRef.current) q.set('dateFrom', dateFromRef.current);
+    if (dateToRef.current) q.set('dateTo', dateToRef.current);
+    return `/leads?${q}`;
+  };
+
+  const applyResponse = (r: any) => {
+    const list: Lead[] = Array.isArray(r) ? r : (r.leads ?? []);
+    setLeads(list);
+    if (r && !Array.isArray(r)) {
+      setTotalPages(r.pages ?? 1);
+      if (r.stats) setStats(r.stats);
+    }
+  };
+
+  const loadLeads = (p: number) =>
+    fetcher(buildUrl(p)).then(applyResponse).catch(console.error);
 
   const refresh = () => {
     setRefreshing(true);
-    loadLeads().finally(() => setRefreshing(false));
+    loadLeads(pageRef.current).finally(() => setRefreshing(false));
   };
 
+  // Carga inicial + auto-refresh
   useEffect(() => {
-    loadLeads().finally(() => setLoading(false));
+    loadLeads(1).finally(() => setLoading(false));
     fetcher('/journey-stages').then(setStages).catch(console.error);
-    const interval = setInterval(loadLeads, 30_000);
+    const interval = setInterval(() => loadLeads(pageRef.current), 30_000);
     return () => clearInterval(interval);
-  }, []);
+  }, []); // eslint-disable-line
+
+  // Busca/data: debounce 350ms, volta pra página 1
+  const initialLoad = useRef(true);
+  useEffect(() => {
+    if (initialLoad.current) { initialLoad.current = false; return; }
+    const t = setTimeout(() => {
+      setPage(1);
+      setLoading(true);
+      loadLeads(1).finally(() => setLoading(false));
+    }, 350);
+    return () => clearTimeout(t);
+  }, [search, dateFrom, dateTo]); // eslint-disable-line
+
+  const goToPage = (p: number) => {
+    if (p < 1 || p > totalPages) return;
+    setPage(p);
+    setLoading(true);
+    loadLeads(p).finally(() => setLoading(false));
+  };
 
   const openLead = (lead: Lead) => {
     setDetail(lead);
@@ -83,7 +136,7 @@ export function Conversations() {
       const fresh = await fetcher(`/leads/${detail.id}`);
       setDetail(fresh);
       setConvValue('');
-      loadLeads();
+      loadLeads(pageRef.current);
       alert('Conversão marcada. Evento enviado ao Meta (se configurado).');
     } catch (e: any) {
       alert(e.message || 'Erro ao marcar conversão');
@@ -95,24 +148,17 @@ export function Conversations() {
   const isMeta = (l: Lead) => !!l.fbclid || !!l.ctwa_clid || /meta|facebook|instagram|fb|ig/i.test(l.utm_source || '');
   const isGoogle = (l: Lead) => /google|adwords|gclid/i.test(l.utm_source || '');
 
+  // Filtro de origem aplicado client-side na página atual
   const filtered = leads.filter((l) => {
-    if (search) {
-      const s = search.toLowerCase();
-      if (!(l.phone_number.toLowerCase().includes(s) || (l.name || '').toLowerCase().includes(s))) return false;
-    }
     if (originFilter === 'meta' && !isMeta(l)) return false;
     if (originFilter === 'google' && !isGoogle(l)) return false;
     if (originFilter === 'untracked' && (l.utm_source || l.fbclid || l.ctwa_clid)) return false;
-    if (dateFrom && new Date(l.created_at) < new Date(dateFrom)) return false;
-    if (dateTo && new Date(l.created_at) > new Date(dateTo + 'T23:59:59')) return false;
     return true;
   });
 
-  const total = leads.length;
-  const meta = leads.filter((l) => isMeta(l)).length;
-  const google = leads.filter((l) => /google/i.test(l.utm_source || '')).length;
-  const untracked = leads.filter((l) => !l.utm_source && !l.fbclid && !l.ctwa_clid).length;
-  const outras = total - meta - google - untracked;
+  const { total: statTotal, meta: statMeta, untracked: statUntracked } = stats;
+  const statOutras = Math.max(0, statTotal - statMeta - statUntracked);
+
   return (
    <div className="space-y-8">
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -122,7 +168,7 @@ export function Conversations() {
             </div>
             <div>
                <p className="text-[13px] text-gray-500 font-medium mb-0.5">Total</p>
-               <p className="text-2xl font-bold text-gray-900 tracking-tight">{total}</p>
+               <p className="text-2xl font-bold text-gray-900 tracking-tight">{statTotal}</p>
             </div>
          </div>
          <div className="bg-white rounded-3xl p-5 border border-gray-100/50 shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex flex-col gap-3">
@@ -131,7 +177,7 @@ export function Conversations() {
             </div>
             <div>
                <p className="text-[13px] text-gray-500 font-medium mb-0.5">Meta Ads</p>
-               <p className="text-2xl font-bold text-gray-900 tracking-tight">{meta}</p>
+               <p className="text-2xl font-bold text-gray-900 tracking-tight">{statMeta}</p>
             </div>
          </div>
          <div className="bg-white rounded-3xl p-5 border border-gray-100/50 shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex flex-col gap-3">
@@ -140,7 +186,7 @@ export function Conversations() {
             </div>
             <div>
                <p className="text-[13px] text-gray-500 font-medium mb-0.5">Google Ads</p>
-               <p className="text-2xl font-bold text-gray-900 tracking-tight">{google}</p>
+               <p className="text-2xl font-bold text-gray-900 tracking-tight">0</p>
             </div>
          </div>
          <div className="bg-white rounded-3xl p-5 border border-gray-100/50 shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex flex-col gap-3">
@@ -149,7 +195,7 @@ export function Conversations() {
             </div>
             <div>
                <p className="text-[13px] text-gray-500 font-medium mb-0.5">Outras Origens</p>
-               <p className="text-2xl font-bold text-gray-900 tracking-tight">{Math.max(0, outras)}</p>
+               <p className="text-2xl font-bold text-gray-900 tracking-tight">{statOutras}</p>
             </div>
          </div>
          <div className="bg-white rounded-3xl p-5 border border-gray-100/50 shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex flex-col gap-3">
@@ -161,7 +207,7 @@ export function Conversations() {
             </div>
             <div>
                <p className="text-[13px] text-gray-500 font-medium mb-0.5">Não Rastreada</p>
-               <p className="text-2xl font-bold text-gray-900 tracking-tight">{untracked}</p>
+               <p className="text-2xl font-bold text-gray-900 tracking-tight">{statUntracked}</p>
             </div>
          </div>
       </div>
@@ -239,7 +285,15 @@ export function Conversations() {
               filtered.map((l) => (
                 <TableRow key={l.id} onClick={() => openLead(l)} className="cursor-pointer hover:bg-gray-50/70">
                   <TableCell></TableCell>
-                  <TableCell className="font-medium">{l.name || l.phone_number}</TableCell>
+                  <TableCell className="font-medium">
+                    <div>{l.name || l.phone_number}</div>
+                    {l.whatsappConnection && (
+                      <div className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
+                        <Smartphone className="w-3 h-3" />
+                        {l.whatsappConnection.session_name}
+                      </div>
+                    )}
+                  </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
                       {l.utm_source || (l.ctwa_clid ? 'Meta Direto' : null) || <span className="text-gray-400">Não rastreada</span>}
@@ -256,15 +310,30 @@ export function Conversations() {
           </TableBody>
         </Table>
       </div>
-      
-      <div className="flex justify-center gap-2 mt-4">
-         <Button variant="outline" disabled className="w-10 h-10 p-0 text-gray-400">
-            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-         </Button>
-         <Button variant="outline" disabled className="w-10 h-10 p-0 text-gray-400">
-            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-         </Button>
-      </div>
+
+      {totalPages > 1 && (
+        <div className="flex justify-center items-center gap-3 mt-4">
+          <Button
+            variant="outline"
+            disabled={page <= 1 || loading}
+            onClick={() => goToPage(page - 1)}
+            className="w-10 h-10 p-0"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </Button>
+          <span className="text-sm text-gray-500">
+            Página {page} de {totalPages}
+          </span>
+          <Button
+            variant="outline"
+            disabled={page >= totalPages || loading}
+            onClick={() => goToPage(page + 1)}
+            className="w-10 h-10 p-0"
+          >
+            <ChevronRight className="w-5 h-5" />
+          </Button>
+        </div>
+      )}
 
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
@@ -320,15 +389,19 @@ export function Conversations() {
                     </code>
                   </div>
                 )}
-                {detail?.origin?.served_by && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-500 flex items-center gap-1"><Smartphone className="w-3.5 h-3.5" /> Atendido por</span>
-                    <span className="font-medium text-gray-900">
-                      {detail.origin.served_by.session_name}
-                      {detail.origin.served_by.phone_number ? ` (${detail.origin.served_by.phone_number})` : ''}
-                    </span>
-                  </div>
-                )}
+                {(() => {
+                  const servedBy = detail?.origin?.served_by ?? detail?.whatsappConnection;
+                  if (!servedBy) return null;
+                  return (
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-500 flex items-center gap-1"><Smartphone className="w-3.5 h-3.5" /> Atendido por</span>
+                      <span className="font-medium text-gray-900">
+                        {servedBy.session_name}
+                        {servedBy.phone_number ? ` (${servedBy.phone_number})` : ''}
+                      </span>
+                    </div>
+                  );
+                })()}
                 {detail?.origin?.rotator_name && (
                   <div className="flex justify-between items-center">
                     <span className="text-gray-500 flex items-center gap-1"><Shuffle className="w-3.5 h-3.5" /> Rotador</span>
@@ -354,7 +427,7 @@ export function Conversations() {
               </div>
             </section>
 
-            {/* Marcar conversão: move etapa + dispara evento Meta com valor */}
+            {/* Marcar conversão */}
             <section className="bg-gray-50 border border-gray-100 rounded-2xl p-4 space-y-3">
               <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Marcar conversão</h3>
               <div>

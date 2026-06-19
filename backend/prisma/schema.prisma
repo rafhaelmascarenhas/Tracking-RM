@@ -44,6 +44,7 @@ model WhatsappConnection {
 
   workspace      Workspace       @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
   rotatorTargets RotatorTarget[]
+  leads          Lead[]
 
   @@map("whatsapp_connections")
 }
@@ -66,11 +67,14 @@ model Lead {
   click_time             DateTime?
   // Atribuição CTWA (anúncio de mensagem direta — Click to WhatsApp)
   ctwa_clid              String?
+  // Número WhatsApp que recebeu a primeira mensagem do lead
+  whatsapp_connection_id String?
   created_at             DateTime @default(now())
 
-  workspace    Workspace     @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-  journeyStage JourneyStage? @relation(fields: [current_journey_stage_id], references: [id])
-  messages     Message[]
+  workspace          Workspace          @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  journeyStage       JourneyStage?      @relation(fields: [current_journey_stage_id], references: [id])
+  whatsappConnection WhatsappConnection? @relation(fields: [whatsapp_connection_id], references: [id])
+  messages           Message[]
 
   @@unique([workspace_id, phone_number])
   @@map("leads")

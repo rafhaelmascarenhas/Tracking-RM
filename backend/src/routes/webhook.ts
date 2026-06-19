@@ -142,7 +142,7 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
     let lead = await prisma.lead.upsert({
       where: { workspace_id_phone_number: { workspace_id: workspaceId, phone_number: phone } },
       update: contactName ? { name: contactName } : {},
-      create: { workspace_id: workspaceId, phone_number: phone, name: contactName || null },
+      create: { workspace_id: workspaceId, phone_number: phone, name: contactName || null, whatsapp_connection_id: connection.id },
     });
 
     // Atribuição CTWA — anúncio de mensagem direta (Click to WhatsApp)
