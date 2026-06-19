@@ -52,6 +52,7 @@ leadsRouter.get('/', async (req: Request, res: Response) => {
       include: {
         journeyStage: true,
         whatsappConnection: { select: { session_name: true, phone_number: true } },
+        messages: { orderBy: { timestamp: 'desc' }, take: 1 },
       },
       orderBy: { created_at: 'desc' },
       skip: (page - 1) * limit,

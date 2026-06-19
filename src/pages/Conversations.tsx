@@ -22,7 +22,22 @@ type Lead = {
   created_at: string;
   journeyStage?: { name: string } | null;
   whatsappConnection?: { session_name: string; phone_number: string | null } | null;
+  messages?: { id: string; direction: string; content: string; timestamp: string }[];
 };
+
+function OriginBadge({ l }: { l: Lead }) {
+  if (l.fbclid) return <Badge className="bg-[#0866FF] text-white">Meta ✓</Badge>;
+  if (l.ctwa_clid) return <Badge className="bg-[#0866FF] text-white">Meta CTWA ✓</Badge>;
+  if (l.utm_source) {
+    const src = l.utm_source.toLowerCase();
+    if (src.includes('google') || src.includes('adwords'))
+      return <Badge className="bg-[#34A853] text-white">{l.utm_source}</Badge>;
+    if (src.includes('meta') || src.includes('facebook') || src.includes('instagram') || src === 'fb' || src === 'ig')
+      return <Badge className="bg-[#0866FF] text-white">{l.utm_source} ✓</Badge>;
+    return <Badge variant="secondary">{l.utm_source}</Badge>;
+  }
+  return <span className="text-gray-400 text-sm">Não rastreada</span>;
+}
 
 type LeadDetail = Lead & {
   messages?: { id: string; direction: string; content: string; timestamp: string }[];
@@ -295,16 +310,19 @@ export function Conversations() {
                       </span>
                     ) : '-'}
                   </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      {l.utm_source || (l.ctwa_clid ? 'Meta Direto' : null) || <span className="text-gray-400">Não rastreada</span>}
-                      {l.fbclid && <Badge variant="default" className="bg-[#0866FF] text-white">Meta ✓</Badge>}
-                      {!l.fbclid && l.ctwa_clid && <Badge variant="default" className="bg-[#0866FF] text-white">Meta CTWA ✓</Badge>}
-                    </div>
-                  </TableCell>
+                  <TableCell><OriginBadge l={l} /></TableCell>
                   <TableCell>{l.journeyStage?.name || '-'}</TableCell>
                   <TableCell>{new Date(l.created_at).toLocaleString('pt-BR')}</TableCell>
-                  <TableCell>{new Date(l.created_at).toLocaleString('pt-BR')}</TableCell>
+                  <TableCell>
+                    {l.messages?.[0] ? (
+                      <div>
+                        <div className="text-xs text-gray-500">{new Date(l.messages[0].timestamp).toLocaleString('pt-BR')}</div>
+                        <div className="text-xs text-gray-400 truncate max-w-[180px]">{l.messages[0].content}</div>
+                      </div>
+                    ) : (
+                      <span className="text-gray-400 text-xs">—</span>
+                    )}
+                  </TableCell>
                 </TableRow>
               ))
             )}
@@ -325,6 +343,20 @@ export function Conversations() {
           <span className="text-sm text-gray-500">
             Página {page} de {totalPages}
           </span>
+          <input
+            type="number"
+            min={1}
+            max={totalPages}
+            defaultValue={page}
+            key={page}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                const v = parseInt((e.target as HTMLInputElement).value);
+                if (!isNaN(v)) goToPage(v);
+              }
+            }}
+            className="w-16 h-9 text-center text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-400"
+          />
           <Button
             variant="outline"
             disabled={page >= totalPages || loading}
@@ -462,12 +494,20 @@ export function Conversations() {
                       key={m.id}
                       className={
                         m.direction === 'INBOUND'
-                          ? 'max-w-[85%] mr-auto bg-white border border-gray-100 rounded-2xl rounded-tl-sm p-3'
-                          : 'max-w-[85%] ml-auto bg-blue-50 rounded-2xl rounded-tr-sm p-3'
+                          ? 'max-w-[85%] mr-auto'
+                          : 'max-w-[85%] ml-auto'
                       }
                     >
-                      <p className="text-sm text-gray-800 whitespace-pre-wrap">{m.content}</p>
-                      <p className="text-[11px] text-gray-400 mt-1">{new Date(m.timestamp).toLocaleString('pt-BR')}</p>
+                      <p className={`text-[10px] font-medium mb-0.5 ${m.direction === 'INBOUND' ? 'text-gray-400' : 'text-blue-400 text-right'}`}>
+                        {m.direction === 'INBOUND' ? 'Lead' : 'Atendente'}
+                      </p>
+                      <div className={m.direction === 'INBOUND'
+                        ? 'bg-white border border-gray-100 rounded-2xl rounded-tl-sm p-3'
+                        : 'bg-blue-50 rounded-2xl rounded-tr-sm p-3'
+                      }>
+                        <p className="text-sm text-gray-800 whitespace-pre-wrap">{m.content}</p>
+                        <p className="text-[11px] text-gray-400 mt-1">{new Date(m.timestamp).toLocaleString('pt-BR')}</p>
+                      </div>
                     </div>
                   ))}
                 </div>

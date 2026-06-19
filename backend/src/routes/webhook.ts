@@ -118,19 +118,24 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
 
     const workspaceId = connection.workspace_id;
 
-    // OUTBOUND (atendente respondeu): não cria lead, só avalia gatilhos de frase do atendente.
+    // OUTBOUND (atendente respondeu): salva mensagem + avalia gatilhos.
     if (fromMe) {
       const existingLead = await prisma.lead.findUnique({
         where: { workspace_id_phone_number: { workspace_id: workspaceId, phone_number: phone } },
       });
-      if (existingLead && text) {
-        await evaluateTriggers({
-          workspaceId,
-          leadId: existingLead.id,
-          text,
-          direction: 'attendant',
-          hasAttribution: !!(existingLead.fbclid || existingLead.click_time || existingLead.ctwa_clid),
-        });
+      if (existingLead) {
+        if (text) {
+          await prisma.message.create({
+            data: { lead_id: existingLead.id, direction: 'OUTBOUND', content: text },
+          });
+          await evaluateTriggers({
+            workspaceId,
+            leadId: existingLead.id,
+            text,
+            direction: 'attendant',
+            hasAttribution: !!(existingLead.fbclid || existingLead.click_time || existingLead.ctwa_clid),
+          });
+        }
       }
       return res.json({ ok: true, handled: 'outbound' });
     }
