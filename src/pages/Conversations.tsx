@@ -264,6 +264,7 @@ export function Conversations() {
             <TableRow>
               <TableHead className="w-12"></TableHead>
               <TableHead className="font-semibold">Contato</TableHead>
+              <TableHead className="font-semibold">Número</TableHead>
               <TableHead className="font-semibold">Origem</TableHead>
               <TableHead className="font-semibold">Etapa da Jornada</TableHead>
               <TableHead className="font-semibold">Primeira Mensagem</TableHead>
@@ -285,14 +286,14 @@ export function Conversations() {
               filtered.map((l) => (
                 <TableRow key={l.id} onClick={() => openLead(l)} className="cursor-pointer hover:bg-gray-50/70">
                   <TableCell></TableCell>
-                  <TableCell className="font-medium">
-                    <div>{l.name || l.phone_number}</div>
-                    {l.whatsappConnection && (
-                      <div className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
-                        <Smartphone className="w-3 h-3" />
+                  <TableCell className="font-medium">{l.name || l.phone_number}</TableCell>
+                  <TableCell className="text-sm text-gray-500">
+                    {l.whatsappConnection ? (
+                      <span className="flex items-center gap-1">
+                        <Smartphone className="w-3.5 h-3.5 shrink-0" />
                         {l.whatsappConnection.session_name}
-                      </div>
-                    )}
+                      </span>
+                    ) : '-'}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
@@ -340,6 +341,17 @@ export function Conversations() {
           <SheetHeader>
             <SheetTitle>{detail?.name || detail?.phone_number}</SheetTitle>
             <span className="text-sm text-gray-500">{detail?.phone_number}</span>
+            {(() => {
+              const servedBy = detail?.origin?.served_by ?? detail?.whatsappConnection;
+              if (!servedBy) return null;
+              return (
+                <span className="inline-flex items-center gap-1.5 text-xs text-gray-500 bg-gray-100 rounded-full px-3 py-1 w-fit mt-1">
+                  <Smartphone className="w-3 h-3" />
+                  {servedBy.session_name}
+                  {servedBy.phone_number ? <span className="text-gray-400">· {servedBy.phone_number}</span> : null}
+                </span>
+              );
+            })()}
           </SheetHeader>
 
           <div className="px-4 pb-6 space-y-6">
@@ -389,19 +401,6 @@ export function Conversations() {
                     </code>
                   </div>
                 )}
-                {(() => {
-                  const servedBy = detail?.origin?.served_by ?? detail?.whatsappConnection;
-                  if (!servedBy) return null;
-                  return (
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-500 flex items-center gap-1"><Smartphone className="w-3.5 h-3.5" /> Atendido por</span>
-                      <span className="font-medium text-gray-900">
-                        {servedBy.session_name}
-                        {servedBy.phone_number ? ` (${servedBy.phone_number})` : ''}
-                      </span>
-                    </div>
-                  );
-                })()}
                 {detail?.origin?.rotator_name && (
                   <div className="flex justify-between items-center">
                     <span className="text-gray-500 flex items-center gap-1"><Shuffle className="w-3.5 h-3.5" /> Rotador</span>
