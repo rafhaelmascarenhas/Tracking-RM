@@ -18,6 +18,9 @@ model Workspace {
   // uazapi — configurado 1x, reutilizado por todos os números do workspace
   uazapi_url         String?
   uazapi_admin_token String?
+  // evolution api — provider alternativo; apikey global serve a todas as instâncias
+  evolution_url      String?
+  evolution_api_key  String?
   created_at        DateTime @default(now())
 
   whatsappConnections WhatsappConnection[]
@@ -34,10 +37,11 @@ model Workspace {
 model WhatsappConnection {
   id           String   @id @default(uuid())
   workspace_id String
-  session_name String   // = nome da instância na uazapi (casa com webhook body.instance)
+  provider     String   @default("UAZAPI") // UAZAPI | EVOLUTION
+  session_name String   // = nome da instância no provider (casa com webhook body.instance)
   status       String   @default("DISCONNECTED") // CONNECTED | DISCONNECTED | CONNECTING
   phone_number String?
-  uazapi_token String?  // token da instância retornado pela uazapi no init
+  uazapi_token String?  // token da instância retornado pela uazapi no init (não usado no Evolution)
   profile_name String?  // nome do perfil WhatsApp após conectar
   is_imported  Boolean  @default(false) // true = importado por token externo; não apaga da uazapi ao deletar
   created_at   DateTime @default(now())

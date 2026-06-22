@@ -16,6 +16,7 @@ type Conn = {
   phone_number: string | null;
   status: string;
   profile_name?: string | null;
+  provider?: string;
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -131,6 +132,7 @@ export function Numbers() {
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
+  const [provider, setProvider] = useState<'UAZAPI' | 'EVOLUTION'>('UAZAPI');
   const [qrConn, setQrConn] = useState<Conn | null>(null);
 
   // Import por token (avançado / discreto)
@@ -150,7 +152,7 @@ export function Numbers() {
     if (!name.trim()) { alert('Dê um nome ao número'); return; }
     setCreating(true);
     try {
-      const conn: Conn = await poster('/numbers', { session_name: name.trim() });
+      const conn: Conn = await poster('/numbers', { session_name: name.trim(), provider });
       setOpen(false); setName('');
       load();
       setQrConn(conn); // já abre o QR pra escanear
@@ -196,9 +198,19 @@ export function Numbers() {
                 <DialogTitle>Novo número</DialogTitle>
                 <DialogDescription>Dê um nome (ex: Vendas SP). Criamos a instância e abrimos o QR na hora.</DialogDescription>
               </DialogHeader>
-              <div className="space-y-2 py-4">
-                <Label>Nome do número</Label>
-                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="ex: vendas-sp" onKeyDown={(e) => e.key === 'Enter' && create()} />
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label>Nome do número</Label>
+                  <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="ex: vendas-sp" onKeyDown={(e) => e.key === 'Enter' && create()} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Provider</Label>
+                  <div className="flex gap-2">
+                    <Button type="button" variant={provider === 'UAZAPI' ? 'default' : 'outline'} size="sm" className="flex-1" onClick={() => setProvider('UAZAPI')}>uazapi</Button>
+                    <Button type="button" variant={provider === 'EVOLUTION' ? 'default' : 'outline'} size="sm" className="flex-1" onClick={() => setProvider('EVOLUTION')}>Evolution</Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Configure as credenciais do provider escolhido em Configurações.</p>
+                </div>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
@@ -260,6 +272,7 @@ export function Numbers() {
             <TableHeader>
               <TableRow>
                 <TableHead>Nome</TableHead>
+                <TableHead>Provider</TableHead>
                 <TableHead>Telefone</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
@@ -267,12 +280,13 @@ export function Numbers() {
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={4} className="text-center py-6 text-muted-foreground">Carregando...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={5} className="text-center py-6 text-muted-foreground">Carregando...</TableCell></TableRow>
               ) : items.length === 0 ? (
-                <TableRow><TableCell colSpan={4} className="text-center py-6 text-muted-foreground">Nenhum número. Clique em "Adicionar número".</TableCell></TableRow>
+                <TableRow><TableCell colSpan={5} className="text-center py-6 text-muted-foreground">Nenhum número. Clique em "Adicionar número".</TableCell></TableRow>
               ) : items.map((c) => (
                 <TableRow key={c.id}>
                   <TableCell className="font-medium">{c.session_name}{c.profile_name ? <span className="text-muted-foreground font-normal"> · {c.profile_name}</span> : null}</TableCell>
+                  <TableCell><Badge variant="outline">{c.provider === 'EVOLUTION' ? 'Evolution' : 'uazapi'}</Badge></TableCell>
                   <TableCell>{c.phone_number || '-'}</TableCell>
                   <TableCell><StatusBadge status={c.status} /></TableCell>
                   <TableCell className="text-right space-x-2">

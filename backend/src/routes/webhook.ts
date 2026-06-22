@@ -21,9 +21,46 @@ function probeRawPayload(phone: string, body: unknown) {
 // uazapiGO webhook format:
 // { EventType, instanceName, owner, token, message: { sender, fromMe, isGroup, text/content, ... }, chat: {...} }
 // Eventos: "messages" (mensagem), "messages_update" (recibos), "connection"/"status".
+// Evolution API v2 manda eventos com ponto ("messages.upsert", "connection.update")
+// e payload no formato Baileys (body.data). Normaliza pro shape uazapiGO que o
+// handler abaixo já consome (EventType + body.message.content.{text,contextInfo}),
+// pra um único fluxo de atribuição/lead servir aos dois providers.
+function adaptEvolutionPayload(body: any): void {
+  const ev = typeof body?.event === 'string' ? body.event : '';
+  if (!ev.includes('.')) return; // uazapiGO não usa eventos com ponto
+
+  if (ev === 'connection.update') {
+    body.EventType = 'connection';
+    body.state = body?.data?.state ?? body?.state;
+    return;
+  }
+
+  if (ev === 'messages.upsert') {
+    const d = body?.data ?? {};
+    const remoteJid: string = d?.key?.remoteJid ?? '';
+    const m = d?.message ?? {};
+    const text: string = m?.conversation ?? m?.extendedTextMessage?.text ?? '';
+    const contextInfo = m?.extendedTextMessage?.contextInfo ?? m?.contextInfo ?? d?.contextInfo ?? {};
+    body.EventType = 'messages';
+    body.instanceName = body.instanceName ?? body.instance;
+    body.message = {
+      fromMe: d?.key?.fromMe ?? false,
+      isGroup: remoteJid.endsWith('@g.us'),
+      chatid: remoteJid,
+      content: { text, contextInfo },
+      senderName: d?.pushName ?? '',
+    };
+    return;
+  }
+
+  // Outros eventos Evolution (ex: messages.update): marca como ignorável.
+  body.EventType = ev.replace('.', '_');
+}
+
 webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
   try {
     const body = req.body ?? {};
+    adaptEvolutionPayload(body);
 
     // EventType é a string confiável. body.event às vezes é objeto (recibos).
     const eventType: string = typeof body.EventType === 'string'

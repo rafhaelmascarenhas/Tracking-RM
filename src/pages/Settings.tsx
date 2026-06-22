@@ -16,6 +16,8 @@ type Workspace = {
   webhook_url?: string | null;
   uazapi_url?: string | null;
   uazapi_admin_token?: string | null;
+  evolution_url?: string | null;
+  evolution_api_key?: string | null;
 };
 
 export function Settings() {
@@ -75,6 +77,24 @@ export function Settings() {
             <Label>Admin Token</Label>
             <Input type="password" value={ws.uazapi_admin_token || ''} onChange={(e) => update('uazapi_admin_token', e.target.value)} placeholder="admintoken da sua conta uazapi" />
             <p className="text-xs text-muted-foreground">Token de administrador do painel uazapi (cria/gerencia instâncias).</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="max-w-xl">
+        <CardHeader>
+          <CardTitle>Evolution API (WhatsApp)</CardTitle>
+          <CardDescription>Provider alternativo. Configure 1x; usado pelos números marcados como Evolution.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Server URL</Label>
+            <Input value={ws.evolution_url || ''} onChange={(e) => update('evolution_url', e.target.value)} placeholder="http://seu-servidor:8080" />
+          </div>
+          <div className="space-y-2">
+            <Label>API Key</Label>
+            <Input type="password" value={ws.evolution_api_key || ''} onChange={(e) => update('evolution_api_key', e.target.value)} placeholder="AUTHENTICATION_API_KEY do servidor Evolution" />
+            <p className="text-xs text-muted-foreground">Key global do Evolution (cria/gerencia todas as instâncias).</p>
           </div>
         </CardContent>
       </Card>

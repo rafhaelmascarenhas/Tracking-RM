@@ -1,15 +1,15 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
+import { getWorkspaceUazapi, getStatus as uazapiGetStatus, initInstance, setWebhook as uazapiSetWebhook } from '../services/uazapi';
 import {
-  getWorkspaceUazapi,
-  initInstance,
-  setWebhook,
-  connectInstance,
-  getStatus,
-  disconnectInstance,
-  deleteInstance,
-  UazapiError,
-} from '../services/uazapi';
+  isProviderError,
+  providerCreateInstance,
+  providerSetWebhook,
+  providerConnect,
+  providerStatus,
+  providerDisconnect,
+  providerDelete,
+} from '../services/whatsappProvider';
 
 const TOKEN_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -22,7 +22,7 @@ function webhookUrl(req: Request): string {
 }
 
 function handleErr(res: Response, e: any) {
-  if (e instanceof UazapiError) return res.status(e.status).json({ error: e.message });
+  if (isProviderError(e)) return res.status(e.status).json({ error: e.message });
   console.error('numbers route error:', e);
   return res.status(500).json({ error: 'Erro interno' });
 }
@@ -59,19 +59,24 @@ numbersRouter.get('/:id', async (req: Request, res: Response) => {
 // Cria a conexão: inicializa a instância na uazapi e já aponta o webhook.
 numbersRouter.post('/', async (req: Request, res: Response) => {
   try {
-    const { session_name, phone_number } = req.body as { session_name?: string; phone_number?: string };
+    const { session_name, phone_number, provider } = req.body as {
+      session_name?: string;
+      phone_number?: string;
+      provider?: string;
+    };
     if (!session_name?.trim()) return res.status(400).json({ error: 'Nome da sessão obrigatório' });
     const name = session_name.trim();
+    const prov = provider === 'EVOLUTION' ? 'EVOLUTION' : 'UAZAPI';
 
-    const cfg = await getWorkspaceUazapi(req.workspaceId!);
-    const token = await initInstance(cfg, name);
-    await setWebhook(cfg, token, webhookUrl(req)).catch((e) => {
+    const { token } = await providerCreateInstance(req.workspaceId!, prov, name);
+    await providerSetWebhook(req.workspaceId!, { provider: prov, session_name: name, uazapi_token: token }, webhookUrl(req)).catch((e) => {
       console.warn('setWebhook falhou (segue mesmo assim):', e.message);
     });
 
     const conn = await prisma.whatsappConnection.create({
       data: {
         workspace_id: req.workspaceId!,
+        provider: prov,
         session_name: name,
         phone_number: phone_number || null,
         uazapi_token: token,
@@ -102,7 +107,7 @@ numbersRouter.post('/import-token', async (req: Request, res: Response) => {
     // Valida o token consultando o status. Se for inválido, a uazapi retorna 401.
     let s;
     try {
-      s = await getStatus(cfg, token);
+      s = await uazapiGetStatus(cfg, token);
     } catch (e: any) {
       const msg: string = e?.message || '';
       if (msg.includes('401') || /invalid token/i.test(msg)) {
@@ -136,6 +141,9 @@ numbersRouter.post('/:id/reinit', async (req: Request, res: Response) => {
       where: { id: req.params.id, workspace_id: req.workspaceId! },
     });
     if (!conn) return res.status(404).json({ error: 'Not found' });
+    if (conn.provider === 'EVOLUTION') {
+      return res.status(400).json({ error: 'reinit não se aplica ao Evolution (sem token de instância). Use reconectar.' });
+    }
 
     const cfg = await getWorkspaceUazapi(req.workspaceId!);
     const token = await initInstance(cfg, conn.session_name);
@@ -145,7 +153,7 @@ numbersRouter.post('/:id/reinit', async (req: Request, res: Response) => {
       data: { uazapi_token: token },
     });
 
-    await setWebhook(cfg, token, webhookUrl(req)).catch((e) => {
+    await uazapiSetWebhook(cfg, token, webhookUrl(req)).catch((e) => {
       console.warn('setWebhook pós-reinit falhou:', e.message);
     });
 
@@ -162,11 +170,9 @@ numbersRouter.post('/:id/sync-webhook', async (req: Request, res: Response) => {
       where: { id: req.params.id, workspace_id: req.workspaceId! },
     });
     if (!conn) return res.status(404).json({ error: 'Not found' });
-    if (!conn.uazapi_token) return res.status(400).json({ error: 'Conexão sem token uazapi.' });
 
-    const cfg = await getWorkspaceUazapi(req.workspaceId!);
     const url = webhookUrl(req);
-    await setWebhook(cfg, conn.uazapi_token, url);
+    await providerSetWebhook(req.workspaceId!, conn, url);
     res.json({ ok: true, webhook_url: url });
   } catch (e) {
     handleErr(res, e);
@@ -180,10 +186,8 @@ numbersRouter.post('/:id/connect', async (req: Request, res: Response) => {
       where: { id: req.params.id, workspace_id: req.workspaceId! },
     });
     if (!conn) return res.status(404).json({ error: 'Not found' });
-    if (!conn.uazapi_token) return res.status(400).json({ error: 'Conexão sem token uazapi. Recrie o número.' });
 
-    const cfg = await getWorkspaceUazapi(req.workspaceId!);
-    const s = await connectInstance(cfg, conn.uazapi_token);
+    const s = await providerConnect(req.workspaceId!, conn);
     await syncConn(conn.id, s);
     res.json(s);
   } catch (e) {
@@ -198,10 +202,9 @@ numbersRouter.get('/:id/status', async (req: Request, res: Response) => {
       where: { id: req.params.id, workspace_id: req.workspaceId! },
     });
     if (!conn) return res.status(404).json({ error: 'Not found' });
-    if (!conn.uazapi_token) return res.json({ status: conn.status, qrcode: null });
+    if (conn.provider !== 'EVOLUTION' && !conn.uazapi_token) return res.json({ status: conn.status, qrcode: null });
 
-    const cfg = await getWorkspaceUazapi(req.workspaceId!);
-    const s = await getStatus(cfg, conn.uazapi_token);
+    const s = await providerStatus(req.workspaceId!, conn);
     await syncConn(conn.id, s);
     res.json(s);
   } catch (e) {
@@ -215,10 +218,7 @@ numbersRouter.post('/:id/disconnect', async (req: Request, res: Response) => {
       where: { id: req.params.id, workspace_id: req.workspaceId! },
     });
     if (!conn) return res.status(404).json({ error: 'Not found' });
-    if (conn.uazapi_token) {
-      const cfg = await getWorkspaceUazapi(req.workspaceId!);
-      await disconnectInstance(cfg, conn.uazapi_token).catch((e) => console.warn('disconnect:', e.message));
-    }
+    await providerDisconnect(req.workspaceId!, conn).catch((e) => console.warn('disconnect:', e.message));
     const updated = await prisma.whatsappConnection.update({
       where: { id: conn.id },
       data: { status: 'DISCONNECTED' },
@@ -254,9 +254,8 @@ numbersRouter.delete('/:id', async (req: Request, res: Response) => {
     });
     if (!conn) return res.status(404).json({ error: 'Not found' });
 
-    if (conn.uazapi_token && !conn.is_imported) {
-      const cfg = await getWorkspaceUazapi(req.workspaceId!).catch(() => null);
-      if (cfg) await deleteInstance(cfg, conn.uazapi_token).catch((e) => console.warn('deleteInstance:', e.message));
+    if (!conn.is_imported) {
+      await providerDelete(req.workspaceId!, conn).catch((e) => console.warn('deleteInstance:', e.message));
     }
     await prisma.whatsappConnection.delete({ where: { id: conn.id } });
     res.json({ ok: true });
