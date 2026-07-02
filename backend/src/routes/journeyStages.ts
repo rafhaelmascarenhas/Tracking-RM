@@ -3,6 +3,17 @@ import { prisma } from '../lib/prisma';
 
 export const journeyStagesRouter = Router();
 
+// Sincroniza o evento de conversão da etapa (1 por plataforma). event_name vazio
+// = etapa sem disparo. Substitui o(s) evento(s) META existente(s) da etapa.
+async function syncStageEvent(stageId: string, event_name?: string | null, platform = 'META') {
+  await prisma.conversionEvent.deleteMany({ where: { journey_stage_id: stageId, platform } });
+  if (event_name && event_name.trim()) {
+    await prisma.conversionEvent.create({
+      data: { journey_stage_id: stageId, platform, event_name: event_name.trim() },
+    });
+  }
+}
+
 journeyStagesRouter.get('/', async (req: Request, res: Response) => {
   const stages = await prisma.journeyStage.findMany({
     where: { workspace_id: req.workspaceId! },
@@ -13,7 +24,7 @@ journeyStagesRouter.get('/', async (req: Request, res: Response) => {
 });
 
 journeyStagesRouter.post('/', async (req: Request, res: Response) => {
-  const { name, order_index, keyword, is_sale, is_first_contact } = req.body;
+  const { name, order_index, keyword, is_sale, is_first_contact, event_name } = req.body;
   const stage = await prisma.journeyStage.create({
     data: {
       workspace_id: req.workspaceId!,
@@ -24,7 +35,9 @@ journeyStagesRouter.post('/', async (req: Request, res: Response) => {
       is_first_contact: !!is_first_contact,
     },
   });
-  res.status(201).json(stage);
+  await syncStageEvent(stage.id, event_name);
+  const full = await prisma.journeyStage.findUnique({ where: { id: stage.id }, include: { conversionEvents: true } });
+  res.status(201).json(full);
 });
 
 // Bulk reorder (drag-and-drop). DEVE vir antes de '/:id' senão o Express casa
@@ -44,14 +57,14 @@ journeyStagesRouter.put('/reorder', async (req: Request, res: Response) => {
 
 journeyStagesRouter.put('/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { name, order_index, keyword, is_sale, is_first_contact } = req.body;
+  const { name, order_index, keyword, is_sale, is_first_contact, event_name } = req.body;
 
   const stage = await prisma.journeyStage.findFirst({
     where: { id, workspace_id: req.workspaceId! },
   });
   if (!stage) return res.status(404).json({ error: 'Not found' });
 
-  const updated = await prisma.journeyStage.update({
+  await prisma.journeyStage.update({
     where: { id },
     data: {
       name,
@@ -61,7 +74,10 @@ journeyStagesRouter.put('/:id', async (req: Request, res: Response) => {
       is_first_contact: !!is_first_contact,
     },
   });
-  res.json(updated);
+  // event_name presente no body (mesmo vazio) = sincroniza; undefined = não mexe.
+  if (event_name !== undefined) await syncStageEvent(id, event_name);
+  const full = await prisma.journeyStage.findUnique({ where: { id }, include: { conversionEvents: true } });
+  res.json(full);
 });
 
 journeyStagesRouter.delete('/:id', async (req: Request, res: Response) => {

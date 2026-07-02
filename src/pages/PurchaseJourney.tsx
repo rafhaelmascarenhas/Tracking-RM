@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Plus, Trash2, Pencil } from 'lucide-react';
 import { fetcher, poster, putter, deleter } from '@/lib/fetcher';
+import { META_EVENTS, eventLabel } from '@/lib/metaEvents';
 
 type Stage = {
   id: string;
@@ -16,11 +17,12 @@ type Stage = {
   keyword?: string | null;
   is_sale?: boolean;
   is_first_contact?: boolean;
+  event_name?: string; // evento associado (derivado de conversionEvents[0])
   created_at: string;
   conversionEvents?: { id: string; platform: string; event_name: string }[];
 };
 
-const empty: Partial<Stage> = { name: '', order_index: 0, keyword: '', is_sale: false, is_first_contact: false };
+const empty: Partial<Stage> = { name: '', order_index: 0, keyword: '', is_sale: false, is_first_contact: false, event_name: '' };
 
 export function PurchaseJourney() {
   const [items, setItems] = useState<Stage[]>([]);
@@ -106,7 +108,7 @@ export function PurchaseJourney() {
                 </TableCell>
                 <TableCell>{new Date(s.created_at).toLocaleDateString('pt-BR')}</TableCell>
                 <TableCell className="text-right">
-                  <Button size="sm" variant="ghost" onClick={() => { setForm(s); setOpen(true); }}><Pencil className="w-4 h-4" /></Button>
+                  <Button size="sm" variant="ghost" onClick={() => { setForm({ ...s, event_name: s.conversionEvents?.find((e) => e.platform === 'META')?.event_name || '' }); setOpen(true); }}><Pencil className="w-4 h-4" /></Button>
                   <Button size="sm" variant="ghost" onClick={() => del(s.id)}><Trash2 className="w-4 h-4 text-red-500" /></Button>
                 </TableCell>
               </TableRow>
@@ -146,6 +148,20 @@ export function PurchaseJourney() {
           <div className="space-y-3">
             <div><Label>Nome</Label><Input value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Ex: Comprou" /></div>
             <div><Label>Ordem</Label><Input type="number" value={form.order_index ?? 0} onChange={(e) => setForm({ ...form, order_index: parseInt(e.target.value) || 0 })} /></div>
+            <div>
+              <Label>Evento de Conversão Associado</Label>
+              <select
+                className="w-full border rounded-md h-9 px-2 text-sm bg-white"
+                value={form.event_name || ''}
+                onChange={(e) => setForm({ ...form, event_name: e.target.value })}
+              >
+                <option value="">Nenhum (não dispara evento)</option>
+                {META_EVENTS.map((ev) => (
+                  <option key={ev.name} value={ev.name}>{eventLabel(ev.name)}</option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-400 mt-1">Evento enviado ao Meta quando o lead entra nesta etapa. Vazio = não dispara.</p>
+            </div>
             <div>
               <Label>Termo-chave (atendente)</Label>
               <Input value={form.keyword || ''} onChange={(e) => setForm({ ...form, keyword: e.target.value })} placeholder="Ex: Parabéns pela sua compra" />
