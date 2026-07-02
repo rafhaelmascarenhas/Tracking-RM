@@ -44,8 +44,17 @@ export async function applyStageToLead(opts: {
 
   if (alreadyFired) return { moved: true, fired: 0 };
 
-  // A etapa já é de uma origem (aba CTWA ou Rotador) — dispara o evento dela.
-  const events = await prisma.conversionEvent.findMany({ where: { journey_stage_id: stageId } });
+  const stage = await prisma.journeyStage.findUnique({ where: { id: stageId } });
+  const allEvents = await prisma.conversionEvent.findMany({ where: { journey_stage_id: stageId } });
+  // Blindagem: dispara no máximo 1 evento por plataforma. Se sobraram registros
+  // duplicados de versões antigas (ex: 'Lead' + 'LeadSubmitted' na mesma etapa),
+  // prioriza o que bate com a origem da etapa; senão pega o primeiro.
+  const byPlatform = new Map<string, (typeof allEvents)[number]>();
+  for (const ev of allEvents) {
+    const current = byPlatform.get(ev.platform);
+    if (!current || ev.source === stage?.origin) byPlatform.set(ev.platform, ev);
+  }
+  const events = [...byPlatform.values()];
   for (const ev of events) {
     await enqueueCapiEvent({
       leadId,
