@@ -53,6 +53,7 @@ export async function applyStageToLead(opts: {
       workspaceId,
       value: overrideValue ?? ev.value,
       currency: ev.currency,
+      journeyStageId: stageId,
     });
   }
   return { moved: true, fired: events.length };

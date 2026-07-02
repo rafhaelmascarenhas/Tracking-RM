@@ -32,6 +32,7 @@ const navItems = [
   { href: '/journey', label: 'Jornada de Compra', icon: Filter },
   { href: '/events', label: 'Eventos de Conversão', icon: MousePointerClick },
   { href: '/pixels', label: 'Disparos de Pixel', icon: Code },
+  { href: '/triggers', label: 'Gatilhos de Conversão', icon: MousePointerClick },
   { href: '/webhooks', label: 'Disparos de Webhook', icon: Globe },
   { href: '/team', label: 'Acessos do Cliente', icon: Users },
   { href: '/client-info', label: 'Informações do Cliente', icon: FileText },

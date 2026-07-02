@@ -14,6 +14,7 @@ import { rotatorRedirectRouter } from './routes/rotatorRedirect';
 import { rotatorsRouter } from './routes/rotators';
 import { reportsRouter } from './routes/reports';
 import { triggersRouter } from './routes/triggers';
+import { pixelFiresRouter } from './routes/pixelFires';
 import { authMiddleware } from './middleware/auth';
 
 const app = express();
@@ -39,6 +40,7 @@ app.use('/api/numbers', numbersRouter);
 app.use('/api/rotators', rotatorsRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/triggers', triggersRouter);
+app.use('/api/pixel-fires', pixelFiresRouter);
 app.use('/api/workspace', workspaceRouter);
 
 app.listen(PORT, () => {

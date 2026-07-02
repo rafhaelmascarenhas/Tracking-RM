@@ -26,7 +26,15 @@ function sha256(value: string): string {
   return crypto.createHash('sha256').update(value.trim().toLowerCase()).digest('hex');
 }
 
-export async function fireMetaCapi(payload: MetaCapiPayload): Promise<void> {
+export interface MetaCapiResult {
+  ok: boolean;
+  status: number;
+  sentEvent: string;      // nome do evento realmente enviado (após remap)
+  actionSource: string;
+  response: string;       // fbtrace_id (sucesso) ou corpo do erro
+}
+
+export async function fireMetaCapi(payload: MetaCapiPayload): Promise<MetaCapiResult> {
   const { pixelId, token, eventName, phone, utms, fbclid, ctwaClid, clientIp, userAgent, clickTimeMs, eventId, value, currency } = payload;
 
   const normalizedPhone = phone.replace(/\D/g, '');
@@ -91,10 +99,17 @@ export async function fireMetaCapi(payload: MetaCapiPayload): Promise<void> {
     }
   );
 
+  const responseText = (await res.text()).slice(0, 500);
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Meta CAPI error: ${err}`);
+    console.warn(`[CAPI] ${effectiveEventName} FALHOU status=${res.status}: ${responseText}`);
   }
+  return {
+    ok: res.ok,
+    status: res.status,
+    sentEvent: effectiveEventName,
+    actionSource,
+    response: responseText,
+  };
 }
 
 /** Dispara ViewContent sem phone — usado na landing page do rotador. */

@@ -8,26 +8,29 @@ type CapiJobData = {
   workspaceId: string;
   value?: number | null;
   currency?: string | null;
+  journeyStageId?: string | null;
 };
 
 async function processCapiJob(data: CapiJobData) {
-  if (data.platform === 'META') {
-    const workspace = await prisma.workspace.findUnique({ where: { id: data.workspaceId } });
-    if (!workspace?.meta_capi_token || !workspace?.meta_pixel_id) return;
+  if (data.platform !== 'META') return;
 
-    const lead = await prisma.lead.findUnique({ where: { id: data.leadId } });
-    if (!lead) return;
+  const workspace = await prisma.workspace.findUnique({ where: { id: data.workspaceId } });
+  if (!workspace?.meta_capi_token || !workspace?.meta_pixel_id) return;
 
-    await fireMetaCapi({
+  const lead = await prisma.lead.findUnique({ where: { id: data.leadId } });
+  if (!lead) return;
+
+  let status = 'error';
+  let sentEvent = data.eventName;
+  let actionSource: string | null = null;
+  let response = '';
+  try {
+    const r = await fireMetaCapi({
       pixelId: workspace.meta_pixel_id,
       token: workspace.meta_capi_token,
       eventName: data.eventName,
       phone: lead.phone_number,
-      utms: {
-        source: lead.utm_source,
-        medium: lead.utm_medium,
-        campaign: lead.utm_campaign,
-      },
+      utms: { source: lead.utm_source, medium: lead.utm_medium, campaign: lead.utm_campaign },
       fbclid: lead.fbclid,
       ctwaClid: lead.ctwa_clid,
       clientIp: lead.click_ip,
@@ -38,7 +41,29 @@ async function processCapiJob(data: CapiJobData) {
       // dedupe se o site disparar o mesmo evento (1 evento = 1 significado)
       eventId: `${lead.id}:${data.eventName}`,
     });
+    status = r.ok ? 'success' : 'error';
+    sentEvent = r.sentEvent;
+    actionSource = r.actionSource;
+    response = r.response;
+  } catch (e: any) {
+    response = String(e?.message || e).slice(0, 500); // erro de rede
   }
+
+  // Log do disparo (alimenta a tela "Disparos de Pixel"). Best-effort.
+  await prisma.pixelFire.create({
+    data: {
+      workspace_id: data.workspaceId,
+      lead_id: data.leadId,
+      journey_stage_id: data.journeyStageId ?? null,
+      platform: 'META',
+      event_name: sentEvent,
+      action_source: actionSource,
+      value: data.value ?? null,
+      currency: data.currency ?? null,
+      status,
+      response,
+    },
+  }).catch((e) => console.error('[pixelFire log]', e?.message));
 }
 
 // In dev (no Redis): fire inline. In prod: use BullMQ queue.

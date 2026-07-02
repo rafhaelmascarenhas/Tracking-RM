@@ -116,6 +116,26 @@ model JourneyStage {
   @@map("journey_stages")
 }
 
+// Log de todo disparo de evento pro pixel (CAPI). Alimenta a tela "Disparos de
+// Pixel" com o RETORNO da Meta — visibilidade + debug (ex: recusa de evento).
+model PixelFire {
+  id               String   @id @default(uuid())
+  workspace_id     String
+  lead_id          String
+  journey_stage_id String?
+  platform         String   // META | GOOGLE
+  event_name       String   // nome REALMENTE enviado (após remap Lead->LeadSubmitted)
+  action_source    String?  // website | business_messaging | system_generated
+  value            Float?
+  currency         String?
+  status           String   // success | error
+  response         String?  // fbtrace_id / corpo do erro da Meta (truncado)
+  fired_at         DateTime @default(now())
+
+  @@index([workspace_id, fired_at])
+  @@map("pixel_fires")
+}
+
 // Dedupe do disparo de etapa: garante que mover um lead pra uma etapa dispara
 // os eventos dela só 1x (mesmo se o atendente repetir o termo-chave).
 model StageFired {
