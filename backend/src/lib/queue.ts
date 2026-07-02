@@ -33,6 +33,8 @@ async function processCapiJob(data: CapiJobData) {
       utms: { source: lead.utm_source, medium: lead.utm_medium, campaign: lead.utm_campaign },
       fbclid: lead.fbclid,
       ctwaClid: lead.ctwa_clid,
+      pageId: workspace.meta_page_id,
+      wabaId: workspace.meta_waba_id,
       clientIp: lead.click_ip,
       userAgent: lead.click_user_agent,
       clickTimeMs: lead.click_time ? lead.click_time.getTime() : null,

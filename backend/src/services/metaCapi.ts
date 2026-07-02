@@ -13,6 +13,9 @@ interface MetaCapiPayload {
   // Atribuição fina — rotador (tráfego→URL) ou CTWA (anúncio msg direta)
   fbclid?: string | null;
   ctwaClid?: string | null;
+  // Exigidos p/ business_messaging (CTWA): um dos dois.
+  pageId?: string | null;
+  wabaId?: string | null;
   clientIp?: string | null;
   userAgent?: string | null;
   clickTimeMs?: number | null;
@@ -35,7 +38,7 @@ export interface MetaCapiResult {
 }
 
 export async function fireMetaCapi(payload: MetaCapiPayload): Promise<MetaCapiResult> {
-  const { pixelId, token, eventName, phone, utms, fbclid, ctwaClid, clientIp, userAgent, clickTimeMs, eventId, value, currency } = payload;
+  const { pixelId, token, eventName, phone, utms, fbclid, ctwaClid, pageId, wabaId, clientIp, userAgent, clickTimeMs, eventId, value, currency } = payload;
 
   const normalizedPhone = phone.replace(/\D/g, '');
 
@@ -81,8 +84,15 @@ export async function fireMetaCapi(payload: MetaCapiPayload): Promise<MetaCapiRe
         event_name: effectiveEventName,
         event_time: Math.floor(Date.now() / 1000),
         action_source: actionSource,
-        // Meta exige messaging_channel quando action_source = business_messaging (CTWA/WhatsApp)
-        ...(actionSource === 'business_messaging' ? { messaging_channel: 'whatsapp' } : {}),
+        // Meta exige messaging_channel + (page_id OU whatsapp_business_account_id)
+        // quando action_source = business_messaging (CTWA/WhatsApp). Subcode 2804116.
+        ...(actionSource === 'business_messaging'
+          ? {
+              messaging_channel: 'whatsapp',
+              ...(pageId ? { page_id: pageId } : {}),
+              ...(wabaId ? { whatsapp_business_account_id: wabaId } : {}),
+            }
+          : {}),
         ...(eventId ? { event_id: eventId } : {}),
         user_data: userData,
         custom_data: customData,

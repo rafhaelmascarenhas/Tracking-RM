@@ -12,6 +12,10 @@ model Workspace {
   name              String
   meta_pixel_id     String?
   meta_capi_token   String?
+  // CTWA (business_messaging) EXIGE page_id OU whatsapp_business_account_id no
+  // evento, senão a Meta recusa (subcode 2804116). Basta um dos dois.
+  meta_page_id      String?
+  meta_waba_id      String?
   google_ads_id     String?
   gtm_id            String?
   webhook_url       String?

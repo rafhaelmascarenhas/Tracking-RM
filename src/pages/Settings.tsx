@@ -11,6 +11,8 @@ type Workspace = {
   name: string;
   meta_pixel_id?: string | null;
   meta_capi_token?: string | null;
+  meta_page_id?: string | null;
+  meta_waba_id?: string | null;
   google_ads_id?: string | null;
   gtm_id?: string | null;
   webhook_url?: string | null;
@@ -114,6 +116,16 @@ export function Settings() {
             <Label>CAPI Access Token</Label>
             <Input type="password" value={ws.meta_capi_token || ''} onChange={(e) => update('meta_capi_token', e.target.value)} placeholder="EAAxxxxxxx..." />
             <p className="text-xs text-muted-foreground">Dispara ViewContent server-side (CAPI) na landing page — mais preciso, não depende do browser.</p>
+          </div>
+          <div className="space-y-2">
+            <Label>Page ID (Facebook)</Label>
+            <Input value={ws.meta_page_id || ''} onChange={(e) => update('meta_page_id', e.target.value)} placeholder="123456789012345" />
+            <p className="text-xs text-muted-foreground">Obrigatório para conversões de WhatsApp (CTWA). ID da Página do Facebook ligada ao WhatsApp. Alternativa: WABA ID abaixo.</p>
+          </div>
+          <div className="space-y-2">
+            <Label>WhatsApp Business Account ID (opcional)</Label>
+            <Input value={ws.meta_waba_id || ''} onChange={(e) => update('meta_waba_id', e.target.value)} placeholder="Alternativa ao Page ID" />
+            <p className="text-xs text-muted-foreground">Use se não tiver o Page ID. Basta um dos dois para os eventos CTWA funcionarem.</p>
           </div>
         </CardContent>
       </Card>
