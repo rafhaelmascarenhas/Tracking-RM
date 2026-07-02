@@ -57,6 +57,13 @@ export async function fireMetaCapi(payload: MetaCapiPayload): Promise<MetaCapiRe
   // orgânico → 'system_generated'
   const actionSource = fbc ? 'website' : ctwaClid ? 'business_messaging' : 'system_generated';
 
+  // page_id/whatsapp_business_account_id vão DENTRO de user_data (não no nível do
+  // evento) — subcode 2804116 diz explicitamente "nos dados do usuário".
+  if (actionSource === 'business_messaging') {
+    if (pageId) userData.page_id = pageId;
+    if (wabaId) userData.whatsapp_business_account_id = wabaId;
+  }
+
   // Meta só aceita uma lista fechada de eventos p/ business_messaging (CTWA).
   // 'Lead' é INVÁLIDO nesse contexto (erro 2804066) — mapeia pro equivalente de
   // mensagens. 'Purchase' já é válido, então mantém. Website/system seguem crus.
@@ -84,15 +91,9 @@ export async function fireMetaCapi(payload: MetaCapiPayload): Promise<MetaCapiRe
         event_name: effectiveEventName,
         event_time: Math.floor(Date.now() / 1000),
         action_source: actionSource,
-        // Meta exige messaging_channel + (page_id OU whatsapp_business_account_id)
-        // quando action_source = business_messaging (CTWA/WhatsApp). Subcode 2804116.
-        ...(actionSource === 'business_messaging'
-          ? {
-              messaging_channel: 'whatsapp',
-              ...(pageId ? { page_id: pageId } : {}),
-              ...(wabaId ? { whatsapp_business_account_id: wabaId } : {}),
-            }
-          : {}),
+        // Meta exige messaging_channel quando action_source = business_messaging
+        // (CTWA/WhatsApp). page_id/waba já foram pro user_data acima (subcode 2804116).
+        ...(actionSource === 'business_messaging' ? { messaging_channel: 'whatsapp' } : {}),
         ...(eventId ? { event_id: eventId } : {}),
         user_data: userData,
         custom_data: customData,
