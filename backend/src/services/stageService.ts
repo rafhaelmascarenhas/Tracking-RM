@@ -44,26 +44,9 @@ export async function applyStageToLead(opts: {
 
   if (alreadyFired) return { moved: true, fired: 0 };
 
-  // Origem do lead decide QUAL evento disparar (ctwa e rotador têm eventos
-  // individuais). ctwa_clid → ctwa; fbclid/click → rotator; senão orgânico.
-  const lead = await prisma.lead.findUnique({ where: { id: leadId } });
-  const src = lead?.ctwa_clid ? 'ctwa' : lead?.fbclid || lead?.click_time ? 'rotator' : 'organic';
-
+  // A etapa já é de uma origem (aba CTWA ou Rotador) — dispara o evento dela.
   const events = await prisma.conversionEvent.findMany({ where: { journey_stage_id: stageId } });
-  // Escolhe evento da origem exata; fallback: source 'any', depois 'rotator'
-  // (website serve p/ orgânico). Dispara no máximo 1 evento por plataforma.
-  const pick = (platform: string) => {
-    const plat = events.filter((e) => e.platform === platform);
-    return (
-      plat.find((e) => e.source === src) ||
-      plat.find((e) => e.source === 'any') ||
-      (src === 'organic' ? plat.find((e) => e.source === 'rotator') : undefined) ||
-      null
-    );
-  };
-
-  const chosen = [pick('META')].filter(Boolean) as typeof events;
-  for (const ev of chosen) {
+  for (const ev of events) {
     await enqueueCapiEvent({
       leadId,
       eventName: ev.event_name,
@@ -74,22 +57,32 @@ export async function applyStageToLead(opts: {
       journeyStageId: stageId,
     });
   }
-  return { moved: true, fired: chosen.length };
+  return { moved: true, fired: events.length };
 }
 
 /**
- * Move o lead pra etapa marcada como "primeiro contato" (is_first_contact) e
- * dispara o evento dela. Chamado no 1º contato do lead (webhook, lead path).
- * Só age se existir uma etapa com a flag. Dedupe via StageFired (1x por lead).
- * Retorna a etapa aplicada ou null (nenhuma flag = comportamento antigo intacto).
+ * Origem do lead → qual funil (aba) da jornada se aplica.
+ * ctwa_clid → 'ctwa'; fbclid/click → 'rotator'; orgânico → 'ctwa' (whatsapp direto).
+ */
+async function leadOrigin(leadId: string): Promise<'ctwa' | 'rotator'> {
+  const lead = await prisma.lead.findUnique({ where: { id: leadId } });
+  if (lead?.fbclid || lead?.click_time) return 'rotator';
+  return 'ctwa';
+}
+
+/**
+ * Move o lead pra etapa marcada como "primeiro contato" (is_first_contact) DO FUNIL
+ * da origem dele (CTWA ou Rotador) e dispara o evento dela. Chamado no 1º contato.
+ * Só age se existir uma etapa com a flag naquela origem. Dedupe via StageFired.
  */
 export async function applyFirstContactStage(opts: {
   workspaceId: string;
   leadId: string;
 }): Promise<{ id: string; name: string } | null> {
   const { workspaceId, leadId } = opts;
+  const origin = await leadOrigin(leadId);
   const stage = await prisma.journeyStage.findFirst({
-    where: { workspace_id: workspaceId, is_first_contact: true },
+    where: { workspace_id: workspaceId, origin, is_first_contact: true },
     orderBy: { order_index: 'asc' },
   });
   if (!stage) return null;
@@ -113,8 +106,10 @@ export async function applyKeywordStage(opts: {
   const lower = (text || '').toLowerCase();
   if (!lower.trim()) return null;
 
+  // Só considera etapas do funil da origem do lead (CTWA ou Rotador).
+  const origin = await leadOrigin(leadId);
   const stages = await prisma.journeyStage.findMany({
-    where: { workspace_id: workspaceId, keyword: { not: null } },
+    where: { workspace_id: workspaceId, origin, keyword: { not: null } },
     orderBy: { order_index: 'asc' },
   });
 

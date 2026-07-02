@@ -106,6 +106,8 @@ model JourneyStage {
   name           String
   order_index    Int
   system_default Boolean  @default(false)
+  // Origem do funil: cada aba (CTWA/WhatsApp direto vs Rotador) tem suas etapas.
+  origin         String   @default("ctwa") // ctwa | rotator
   // Termo-chave: quando o atendente envia essa frase, o lead move pra esta etapa
   // e dispara os conversionEvents dela (1x por lead, ver StageFired). null = sem auto.
   keyword          String?

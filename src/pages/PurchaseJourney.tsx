@@ -9,37 +9,33 @@ import { Plus, Trash2, Pencil } from 'lucide-react';
 import { fetcher, poster, putter, deleter } from '@/lib/fetcher';
 import { META_EVENTS, META_EVENTS_CTWA, eventLabel } from '@/lib/metaEvents';
 
+type Origin = 'ctwa' | 'rotator';
 type CEvent = { id: string; platform: string; source?: string; event_name: string };
 type Stage = {
   id: string;
   name: string;
   order_index: number;
   system_default: boolean;
+  origin?: Origin;
   keyword?: string | null;
   is_sale?: boolean;
   is_first_contact?: boolean;
-  event_ctwa?: string;    // evento p/ leads CTWA
-  event_rotator?: string; // evento p/ leads do rotador
+  event_name?: string; // evento único da etapa (derivado de conversionEvents)
   created_at: string;
   conversionEvents?: CEvent[];
 };
 
-const empty: Partial<Stage> = { name: '', order_index: 0, keyword: '', is_sale: false, is_first_contact: false, event_ctwa: '', event_rotator: '' };
+const empty: Partial<Stage> = { name: '', order_index: 0, keyword: '', is_sale: false, is_first_contact: false, event_name: '' };
 
-// Deriva os eventos por origem a partir dos conversionEvents salvos (legacy 'any' = ambos).
-function deriveEvents(evs?: CEvent[]) {
-  const meta = (evs || []).filter((e) => e.platform === 'META');
-  const bySrc = (s: string) => meta.find((e) => (e.source || 'any') === s)?.event_name;
-  const anyEv = meta.find((e) => (e.source || 'any') === 'any')?.event_name || '';
-  return {
-    event_ctwa: bySrc('ctwa') || anyEv || '',
-    event_rotator: bySrc('rotator') || anyEv || '',
-  };
-}
+const TABS: { key: Origin; label: string }[] = [
+  { key: 'ctwa', label: 'WhatsApp Direto (CTWA)' },
+  { key: 'rotator', label: 'Rotador' },
+];
 
 export function PurchaseJourney() {
   const [items, setItems] = useState<Stage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<Origin>('ctwa');
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<Partial<Stage>>(empty);
   const [reorderOpen, setReorderOpen] = useState(false);
@@ -52,7 +48,11 @@ export function PurchaseJourney() {
   };
   useEffect(load, []);
 
-  const openReorder = () => { setOrderList([...items]); setReorderOpen(true); };
+  // Etapas da aba atual (origem).
+  const shown = items.filter((s) => (s.origin || 'ctwa') === tab);
+  const eventCatalog = tab === 'ctwa' ? META_EVENTS_CTWA : META_EVENTS;
+
+  const openReorder = () => { setOrderList([...shown]); setReorderOpen(true); };
   const onDrop = (idx: number) => {
     if (dragIdx === null || dragIdx === idx) return;
     const next = [...orderList];
@@ -66,9 +66,17 @@ export function PurchaseJourney() {
     setReorderOpen(false); load();
   };
 
+  const openNew = () => { setForm({ ...empty, origin: tab }); setOpen(true); };
+  const openEdit = (s: Stage) => {
+    const ev = (s.conversionEvents || []).find((e) => e.platform === 'META')?.event_name || '';
+    setForm({ ...s, event_name: ev });
+    setOpen(true);
+  };
+
   const save = async () => {
-    if (form.id) await putter(`/journey-stages/${form.id}`, form);
-    else await poster('/journey-stages', { ...form, order_index: items.length });
+    const payload = { ...form, origin: form.origin || tab };
+    if (form.id) await putter(`/journey-stages/${form.id}`, payload);
+    else await poster('/journey-stages', { ...payload, order_index: shown.length });
     setOpen(false); setForm(empty); load();
   };
   const del = async (id: string) => {
@@ -82,10 +90,26 @@ export function PurchaseJourney() {
         <h2 className="text-lg font-bold text-gray-800">Jornada de Compra</h2>
         <div className="flex gap-2">
           <Button variant="outline" onClick={openReorder}>Ordenar Etapas</Button>
-          <Button onClick={() => { setForm(empty); setOpen(true); }} className="bg-[#0095FF] text-white">
+          <Button onClick={openNew} className="bg-[#0095FF] text-white">
             <Plus className="w-4 h-4 mr-1" /> Nova Etapa
           </Button>
         </div>
+      </div>
+
+      {/* Abas por origem: cada funil tem eventos válidos próprios */}
+      <div className="flex gap-1 border-b border-gray-200">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={
+              'px-4 py-2 text-sm font-medium border-b-2 -mb-px ' +
+              (tab === t.key ? 'border-[#0095FF] text-[#0095FF]' : 'border-transparent text-gray-500 hover:text-gray-700')
+            }
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
       <Card className="border-gray-200 shadow-sm overflow-hidden">
@@ -94,7 +118,7 @@ export function PurchaseJourney() {
             <TableRow>
               <TableHead>Ordem</TableHead>
               <TableHead>Nome</TableHead>
-              <TableHead>Eventos</TableHead>
+              <TableHead>Evento</TableHead>
               <TableHead>Criado em</TableHead>
               <TableHead className="text-right">Ações</TableHead>
             </TableRow>
@@ -102,9 +126,9 @@ export function PurchaseJourney() {
           <TableBody>
             {loading ? (
               <TableRow><TableCell colSpan={5} className="text-center py-12">Carregando...</TableCell></TableRow>
-            ) : items.length === 0 ? (
-              <TableRow><TableCell colSpan={5} className="text-center py-12 text-gray-500">Nenhuma etapa.</TableCell></TableRow>
-            ) : items.map((s) => (
+            ) : shown.length === 0 ? (
+              <TableRow><TableCell colSpan={5} className="text-center py-12 text-gray-500">Nenhuma etapa neste funil.</TableCell></TableRow>
+            ) : shown.map((s) => (
               <TableRow key={s.id}>
                 <TableCell>{s.order_index}</TableCell>
                 <TableCell className="font-medium">
@@ -116,12 +140,12 @@ export function PurchaseJourney() {
                 </TableCell>
                 <TableCell>
                   {s.conversionEvents && s.conversionEvents.length > 0
-                    ? s.conversionEvents.map((e) => `${(e.source || 'any').toUpperCase()}: ${e.event_name}`).join(' · ')
+                    ? s.conversionEvents.map((e) => e.event_name).join(', ')
                     : '-'}
                 </TableCell>
                 <TableCell>{new Date(s.created_at).toLocaleDateString('pt-BR')}</TableCell>
                 <TableCell className="text-right">
-                  <Button size="sm" variant="ghost" onClick={() => { setForm({ ...s, ...deriveEvents(s.conversionEvents) }); setOpen(true); }}><Pencil className="w-4 h-4" /></Button>
+                  <Button size="sm" variant="ghost" onClick={() => openEdit(s)}><Pencil className="w-4 h-4" /></Button>
                   <Button size="sm" variant="ghost" onClick={() => del(s.id)}><Trash2 className="w-4 h-4 text-red-500" /></Button>
                 </TableCell>
               </TableRow>
@@ -157,36 +181,25 @@ export function PurchaseJourney() {
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>{form.id ? 'Editar' : 'Nova'} Etapa</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{form.id ? 'Editar' : 'Nova'} Etapa — {TABS.find((t) => t.key === (form.origin || tab))?.label}</DialogTitle>
+          </DialogHeader>
           <div className="space-y-3">
             <div><Label>Nome</Label><Input value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Ex: Comprou" /></div>
             <div><Label>Ordem</Label><Input type="number" value={form.order_index ?? 0} onChange={(e) => setForm({ ...form, order_index: parseInt(e.target.value) || 0 })} /></div>
             <div>
-              <Label>Evento para leads de <strong>CTWA</strong> (WhatsApp)</Label>
+              <Label>Evento de Conversão Associado</Label>
               <select
                 className="w-full border rounded-md h-9 px-2 text-sm bg-white"
-                value={form.event_ctwa || ''}
-                onChange={(e) => setForm({ ...form, event_ctwa: e.target.value })}
+                value={form.event_name || ''}
+                onChange={(e) => setForm({ ...form, event_name: e.target.value })}
               >
-                <option value="">Nenhum (não dispara)</option>
-                {META_EVENTS_CTWA.map((ev) => (
+                <option value="">Nenhum (não dispara evento)</option>
+                {eventCatalog.map((ev) => (
                   <option key={ev.name} value={ev.name}>{eventLabel(ev.name)}</option>
                 ))}
               </select>
-            </div>
-            <div>
-              <Label>Evento para leads do <strong>Rotador</strong> (site/link)</Label>
-              <select
-                className="w-full border rounded-md h-9 px-2 text-sm bg-white"
-                value={form.event_rotator || ''}
-                onChange={(e) => setForm({ ...form, event_rotator: e.target.value })}
-              >
-                <option value="">Nenhum (não dispara)</option>
-                {META_EVENTS.map((ev) => (
-                  <option key={ev.name} value={ev.name}>{eventLabel(ev.name)}</option>
-                ))}
-              </select>
-              <p className="text-xs text-gray-400 mt-1">Origens têm eventos válidos diferentes. O sistema dispara o evento conforme a origem do lead. Vazio = não dispara p/ aquela origem.</p>
+              <p className="text-xs text-gray-400 mt-1">Evento enviado ao Meta quando o lead deste funil entra nesta etapa. Vazio = não dispara.</p>
             </div>
             <div>
               <Label>Termo-chave (atendente)</Label>
