@@ -5,7 +5,7 @@ import { prisma } from '../lib/prisma';
 import { matchTrackableMessage } from '../services/messageMatcher';
 import { matchRotatorClick } from '../services/rotatorService';
 import { evaluateTriggers } from '../services/triggerService';
-import { applyKeywordStage } from '../services/stageService';
+import { applyKeywordStage, applyFirstContactStage } from '../services/stageService';
 
 export const webhookRouter = Router();
 
@@ -256,13 +256,22 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
     }
 
     // Gatilhos do lead (conversation_open dispara mesmo sem texto; phrase precisa do texto)
+    const hasAttribution = !!(lead.fbclid || lead.click_time || lead.ctwa_clid);
     await evaluateTriggers({
       workspaceId,
       leadId: lead.id,
       text: text || '',
       direction: 'lead',
-      hasAttribution: !!(lead.fbclid || lead.click_time || lead.ctwa_clid),
+      hasAttribution,
     });
+
+    // Primeiro contato (modelo Tibim/jornada): se há etapa com is_first_contact e
+    // este é o 1º contato (lead ainda sem etapa) de um lead ATRIBUÍDO (rotador/CTWA,
+    // nunca orgânico), move pra essa etapa e dispara o evento dela. Inerte enquanto
+    // nenhuma etapa tiver a flag — o trigger conversation_open segue intacto.
+    if (hasAttribution && !lead.current_journey_stage_id) {
+      await applyFirstContactStage({ workspaceId, leadId: lead.id });
+    }
 
     return res.json({ ok: true, lead_id: lead.id });
   } catch (err) {

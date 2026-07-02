@@ -60,6 +60,28 @@ export async function applyStageToLead(opts: {
 }
 
 /**
+ * Move o lead pra etapa marcada como "primeiro contato" (is_first_contact) e
+ * dispara o evento dela. Chamado no 1º contato do lead (webhook, lead path).
+ * Só age se existir uma etapa com a flag. Dedupe via StageFired (1x por lead).
+ * Retorna a etapa aplicada ou null (nenhuma flag = comportamento antigo intacto).
+ */
+export async function applyFirstContactStage(opts: {
+  workspaceId: string;
+  leadId: string;
+}): Promise<{ id: string; name: string } | null> {
+  const { workspaceId, leadId } = opts;
+  const stage = await prisma.journeyStage.findFirst({
+    where: { workspace_id: workspaceId, is_first_contact: true },
+    orderBy: { order_index: 'asc' },
+  });
+  if (!stage) return null;
+
+  const r = await applyStageToLead({ workspaceId, leadId, stageId: stage.id, mode: 'auto' });
+  console.log(`[stage] first-contact lead=${leadId} -> "${stage.name}" fired=${r.fired}`);
+  return { id: stage.id, name: stage.name };
+}
+
+/**
  * Procura uma etapa cujo termo-chave apareça no texto (substring, case-insensitive)
  * e aplica ao lead via applyStageToLead(mode='auto'). Chamado no webhook quando o
  * ATENDENTE (fromMe) manda mensagem. Retorna a etapa aplicada ou null.

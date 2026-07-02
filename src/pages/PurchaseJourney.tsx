@@ -27,12 +27,29 @@ export function PurchaseJourney() {
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<Partial<Stage>>(empty);
+  const [reorderOpen, setReorderOpen] = useState(false);
+  const [orderList, setOrderList] = useState<Stage[]>([]);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
 
   const load = () => {
     setLoading(true);
     fetcher('/journey-stages').then(setItems).finally(() => setLoading(false));
   };
   useEffect(load, []);
+
+  const openReorder = () => { setOrderList([...items]); setReorderOpen(true); };
+  const onDrop = (idx: number) => {
+    if (dragIdx === null || dragIdx === idx) return;
+    const next = [...orderList];
+    const [moved] = next.splice(dragIdx, 1);
+    next.splice(idx, 0, moved);
+    setOrderList(next);
+    setDragIdx(null);
+  };
+  const saveOrder = async () => {
+    await putter('/journey-stages/reorder', { order: orderList.map((s, i) => ({ id: s.id, order_index: i })) });
+    setReorderOpen(false); load();
+  };
 
   const save = async () => {
     if (form.id) await putter(`/journey-stages/${form.id}`, form);
@@ -48,9 +65,12 @@ export function PurchaseJourney() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-lg font-bold text-gray-800">Jornada de Compra</h2>
-        <Button onClick={() => { setForm(empty); setOpen(true); }} className="bg-[#0095FF] text-white">
-          <Plus className="w-4 h-4 mr-1" /> Nova Etapa
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={openReorder}>Ordenar Etapas</Button>
+          <Button onClick={() => { setForm(empty); setOpen(true); }} className="bg-[#0095FF] text-white">
+            <Plus className="w-4 h-4 mr-1" /> Nova Etapa
+          </Button>
+        </div>
       </div>
 
       <Card className="border-gray-200 shadow-sm overflow-hidden">
@@ -94,6 +114,31 @@ export function PurchaseJourney() {
           </TableBody>
         </Table>
       </Card>
+
+      <Dialog open={reorderOpen} onOpenChange={setReorderOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Ordenar Etapas do Funil</DialogTitle></DialogHeader>
+          <p className="text-sm text-gray-500">Arraste para ordenar as etapas do funil.</p>
+          <div className="space-y-2 py-2">
+            {orderList.map((s, idx) => (
+              <div
+                key={s.id}
+                draggable
+                onDragStart={() => setDragIdx(idx)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => onDrop(idx)}
+                className="cursor-move rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-center font-medium hover:bg-gray-100"
+              >
+                ⋮⋮ {s.name}
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReorderOpen(false)}>Cancelar</Button>
+            <Button onClick={saveOrder}>Salvar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
