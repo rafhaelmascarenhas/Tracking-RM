@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
-import { enqueueCapiEvent } from '../lib/queue';
+import { applyStageToLead } from '../services/stageService';
 
 export const leadsRouter = Router();
 
@@ -124,25 +124,15 @@ leadsRouter.patch('/:lead_id/stage', async (req: Request, res: Response) => {
   });
   if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
-  const updated = await prisma.lead.update({
-    where: { id: lead_id },
-    data: { current_journey_stage_id: stage_id },
+  // Marcação manual: sempre dispara os eventos da etapa (ação explícita).
+  await applyStageToLead({
+    workspaceId: req.workspaceId!,
+    leadId: lead_id,
+    stageId: stage_id,
+    overrideValue,
+    mode: 'manual',
   });
 
-  const events = await prisma.conversionEvent.findMany({
-    where: { journey_stage_id: stage_id },
-  });
-
-  for (const event of events) {
-    await enqueueCapiEvent({
-      leadId: lead_id,
-      eventName: event.event_name,
-      platform: event.platform,
-      workspaceId: req.workspaceId!,
-      value: overrideValue ?? event.value,
-      currency: event.currency,
-    });
-  }
-
+  const updated = await prisma.lead.findUnique({ where: { id: lead_id } });
   res.json(updated);
 });

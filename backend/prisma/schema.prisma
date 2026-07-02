@@ -102,6 +102,11 @@ model JourneyStage {
   name           String
   order_index    Int
   system_default Boolean  @default(false)
+  // Termo-chave: quando o atendente envia essa frase, o lead move pra esta etapa
+  // e dispara os conversionEvents dela (1x por lead, ver StageFired). null = sem auto.
+  keyword          String?
+  is_sale          Boolean @default(false) // etapa representa uma venda
+  is_first_contact Boolean @default(false) // etapa representa o primeiro contato
   created_at     DateTime @default(now())
 
   workspace         Workspace         @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
@@ -109,6 +114,18 @@ model JourneyStage {
   conversionEvents  ConversionEvent[]
 
   @@map("journey_stages")
+}
+
+// Dedupe do disparo de etapa: garante que mover um lead pra uma etapa dispara
+// os eventos dela só 1x (mesmo se o atendente repetir o termo-chave).
+model StageFired {
+  id               String   @id @default(uuid())
+  lead_id          String
+  journey_stage_id String
+  fired_at         DateTime @default(now())
+
+  @@unique([lead_id, journey_stage_id])
+  @@map("stage_fired")
 }
 
 model ConversionEvent {

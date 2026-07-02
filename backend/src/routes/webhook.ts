@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma';
 import { matchTrackableMessage } from '../services/messageMatcher';
 import { matchRotatorClick } from '../services/rotatorService';
 import { evaluateTriggers } from '../services/triggerService';
+import { applyKeywordStage } from '../services/stageService';
 
 export const webhookRouter = Router();
 
@@ -172,6 +173,9 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
             direction: 'attendant',
             hasAttribution: !!(existingLead.fbclid || existingLead.click_time || existingLead.ctwa_clid),
           });
+          // Termo-chave da etapa: atendente manda a frase → move o lead pra etapa
+          // e dispara o evento dela (dedupe 1x por lead). Modelo Tintim.
+          await applyKeywordStage({ workspaceId, leadId: existingLead.id, text });
         }
       }
       return res.json({ ok: true, handled: 'outbound' });

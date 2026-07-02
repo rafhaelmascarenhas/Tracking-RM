@@ -13,11 +13,14 @@ type Stage = {
   name: string;
   order_index: number;
   system_default: boolean;
+  keyword?: string | null;
+  is_sale?: boolean;
+  is_first_contact?: boolean;
   created_at: string;
   conversionEvents?: { id: string; platform: string; event_name: string }[];
 };
 
-const empty: Partial<Stage> = { name: '', order_index: 0 };
+const empty: Partial<Stage> = { name: '', order_index: 0, keyword: '', is_sale: false, is_first_contact: false };
 
 export function PurchaseJourney() {
   const [items, setItems] = useState<Stage[]>([]);
@@ -69,7 +72,13 @@ export function PurchaseJourney() {
             ) : items.map((s) => (
               <TableRow key={s.id}>
                 <TableCell>{s.order_index}</TableCell>
-                <TableCell className="font-medium">{s.name}{s.system_default && <span className="ml-2 text-xs text-gray-400">(padrão)</span>}</TableCell>
+                <TableCell className="font-medium">
+                  {s.name}
+                  {s.is_first_contact && <span className="ml-2 text-xs" title="Primeiro contato">💬</span>}
+                  {s.is_sale && <span className="ml-1 text-xs" title="Venda">✅</span>}
+                  {s.system_default && <span className="ml-2 text-xs text-gray-400">(padrão)</span>}
+                  {s.keyword && <div className="text-xs text-gray-400 font-normal mt-0.5">termo: "{s.keyword}"</div>}
+                </TableCell>
                 <TableCell>
                   {s.conversionEvents && s.conversionEvents.length > 0
                     ? s.conversionEvents.map((e) => `${e.platform}:${e.event_name}`).join(', ')
@@ -92,6 +101,19 @@ export function PurchaseJourney() {
           <div className="space-y-3">
             <div><Label>Nome</Label><Input value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Ex: Comprou" /></div>
             <div><Label>Ordem</Label><Input type="number" value={form.order_index ?? 0} onChange={(e) => setForm({ ...form, order_index: parseInt(e.target.value) || 0 })} /></div>
+            <div>
+              <Label>Termo-chave (atendente)</Label>
+              <Input value={form.keyword || ''} onChange={(e) => setForm({ ...form, keyword: e.target.value })} placeholder="Ex: Parabéns pela sua compra" />
+              <p className="text-xs text-gray-400 mt-1">Quando o atendente enviar essa frase, o lead move pra esta etapa e dispara o evento dela. Vazio = sem automação.</p>
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={!!form.is_sale} onChange={(e) => setForm({ ...form, is_sale: e.target.checked })} />
+              Etapa representa uma <strong>venda</strong>
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={!!form.is_first_contact} onChange={(e) => setForm({ ...form, is_first_contact: e.target.checked })} />
+              Etapa representa o <strong>primeiro contato</strong>
+            </label>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
