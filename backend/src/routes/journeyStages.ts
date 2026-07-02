@@ -3,13 +3,20 @@ import { prisma } from '../lib/prisma';
 
 export const journeyStagesRouter = Router();
 
-// Sincroniza o evento de conversão da etapa (1 por plataforma). event_name vazio
-// = etapa sem disparo. Substitui o(s) evento(s) META existente(s) da etapa.
-async function syncStageEvent(stageId: string, event_name?: string | null, platform = 'META') {
-  await prisma.conversionEvent.deleteMany({ where: { journey_stage_id: stageId, platform } });
-  if (event_name && event_name.trim()) {
-    await prisma.conversionEvent.create({
-      data: { journey_stage_id: stageId, platform, event_name: event_name.trim() },
+// Sincroniza os eventos META da etapa por origem (ctwa/rotator). Cada origem tem
+// seu próprio evento (listas válidas diferem). Vazio = não dispara p/ aquela origem.
+// Substitui todos os eventos META da etapa.
+async function syncStageEvents(
+  stageId: string,
+  events: { ctwa?: string | null; rotator?: string | null }
+) {
+  await prisma.conversionEvent.deleteMany({ where: { journey_stage_id: stageId, platform: 'META' } });
+  const rows: { source: string; event_name: string }[] = [];
+  if (events.ctwa && events.ctwa.trim()) rows.push({ source: 'ctwa', event_name: events.ctwa.trim() });
+  if (events.rotator && events.rotator.trim()) rows.push({ source: 'rotator', event_name: events.rotator.trim() });
+  if (rows.length) {
+    await prisma.conversionEvent.createMany({
+      data: rows.map((r) => ({ journey_stage_id: stageId, platform: 'META', source: r.source, event_name: r.event_name })),
     });
   }
 }
@@ -24,7 +31,7 @@ journeyStagesRouter.get('/', async (req: Request, res: Response) => {
 });
 
 journeyStagesRouter.post('/', async (req: Request, res: Response) => {
-  const { name, order_index, keyword, is_sale, is_first_contact, event_name } = req.body;
+  const { name, order_index, keyword, is_sale, is_first_contact, event_ctwa, event_rotator } = req.body;
   const stage = await prisma.journeyStage.create({
     data: {
       workspace_id: req.workspaceId!,
@@ -35,7 +42,7 @@ journeyStagesRouter.post('/', async (req: Request, res: Response) => {
       is_first_contact: !!is_first_contact,
     },
   });
-  await syncStageEvent(stage.id, event_name);
+  await syncStageEvents(stage.id, { ctwa: event_ctwa, rotator: event_rotator });
   const full = await prisma.journeyStage.findUnique({ where: { id: stage.id }, include: { conversionEvents: true } });
   res.status(201).json(full);
 });
@@ -57,7 +64,7 @@ journeyStagesRouter.put('/reorder', async (req: Request, res: Response) => {
 
 journeyStagesRouter.put('/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { name, order_index, keyword, is_sale, is_first_contact, event_name } = req.body;
+  const { name, order_index, keyword, is_sale, is_first_contact, event_ctwa, event_rotator } = req.body;
 
   const stage = await prisma.journeyStage.findFirst({
     where: { id, workspace_id: req.workspaceId! },
@@ -74,8 +81,10 @@ journeyStagesRouter.put('/:id', async (req: Request, res: Response) => {
       is_first_contact: !!is_first_contact,
     },
   });
-  // event_name presente no body (mesmo vazio) = sincroniza; undefined = não mexe.
-  if (event_name !== undefined) await syncStageEvent(id, event_name);
+  // Se veio algum dos campos de evento no body, sincroniza os dois.
+  if (event_ctwa !== undefined || event_rotator !== undefined) {
+    await syncStageEvents(id, { ctwa: event_ctwa, rotator: event_rotator });
+  }
   const full = await prisma.journeyStage.findUnique({ where: { id }, include: { conversionEvents: true } });
   res.json(full);
 });

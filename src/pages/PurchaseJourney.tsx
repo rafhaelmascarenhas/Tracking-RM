@@ -7,8 +7,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Plus, Trash2, Pencil } from 'lucide-react';
 import { fetcher, poster, putter, deleter } from '@/lib/fetcher';
-import { META_EVENTS, eventLabel } from '@/lib/metaEvents';
+import { META_EVENTS, META_EVENTS_CTWA, eventLabel } from '@/lib/metaEvents';
 
+type CEvent = { id: string; platform: string; source?: string; event_name: string };
 type Stage = {
   id: string;
   name: string;
@@ -17,12 +18,24 @@ type Stage = {
   keyword?: string | null;
   is_sale?: boolean;
   is_first_contact?: boolean;
-  event_name?: string; // evento associado (derivado de conversionEvents[0])
+  event_ctwa?: string;    // evento p/ leads CTWA
+  event_rotator?: string; // evento p/ leads do rotador
   created_at: string;
-  conversionEvents?: { id: string; platform: string; event_name: string }[];
+  conversionEvents?: CEvent[];
 };
 
-const empty: Partial<Stage> = { name: '', order_index: 0, keyword: '', is_sale: false, is_first_contact: false, event_name: '' };
+const empty: Partial<Stage> = { name: '', order_index: 0, keyword: '', is_sale: false, is_first_contact: false, event_ctwa: '', event_rotator: '' };
+
+// Deriva os eventos por origem a partir dos conversionEvents salvos (legacy 'any' = ambos).
+function deriveEvents(evs?: CEvent[]) {
+  const meta = (evs || []).filter((e) => e.platform === 'META');
+  const bySrc = (s: string) => meta.find((e) => (e.source || 'any') === s)?.event_name;
+  const anyEv = meta.find((e) => (e.source || 'any') === 'any')?.event_name || '';
+  return {
+    event_ctwa: bySrc('ctwa') || anyEv || '',
+    event_rotator: bySrc('rotator') || anyEv || '',
+  };
+}
 
 export function PurchaseJourney() {
   const [items, setItems] = useState<Stage[]>([]);
@@ -103,12 +116,12 @@ export function PurchaseJourney() {
                 </TableCell>
                 <TableCell>
                   {s.conversionEvents && s.conversionEvents.length > 0
-                    ? s.conversionEvents.map((e) => `${e.platform}:${e.event_name}`).join(', ')
+                    ? s.conversionEvents.map((e) => `${(e.source || 'any').toUpperCase()}: ${e.event_name}`).join(' · ')
                     : '-'}
                 </TableCell>
                 <TableCell>{new Date(s.created_at).toLocaleDateString('pt-BR')}</TableCell>
                 <TableCell className="text-right">
-                  <Button size="sm" variant="ghost" onClick={() => { setForm({ ...s, event_name: s.conversionEvents?.find((e) => e.platform === 'META')?.event_name || '' }); setOpen(true); }}><Pencil className="w-4 h-4" /></Button>
+                  <Button size="sm" variant="ghost" onClick={() => { setForm({ ...s, ...deriveEvents(s.conversionEvents) }); setOpen(true); }}><Pencil className="w-4 h-4" /></Button>
                   <Button size="sm" variant="ghost" onClick={() => del(s.id)}><Trash2 className="w-4 h-4 text-red-500" /></Button>
                 </TableCell>
               </TableRow>
@@ -149,18 +162,31 @@ export function PurchaseJourney() {
             <div><Label>Nome</Label><Input value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Ex: Comprou" /></div>
             <div><Label>Ordem</Label><Input type="number" value={form.order_index ?? 0} onChange={(e) => setForm({ ...form, order_index: parseInt(e.target.value) || 0 })} /></div>
             <div>
-              <Label>Evento de Conversão Associado</Label>
+              <Label>Evento para leads de <strong>CTWA</strong> (WhatsApp)</Label>
               <select
                 className="w-full border rounded-md h-9 px-2 text-sm bg-white"
-                value={form.event_name || ''}
-                onChange={(e) => setForm({ ...form, event_name: e.target.value })}
+                value={form.event_ctwa || ''}
+                onChange={(e) => setForm({ ...form, event_ctwa: e.target.value })}
               >
-                <option value="">Nenhum (não dispara evento)</option>
+                <option value="">Nenhum (não dispara)</option>
+                {META_EVENTS_CTWA.map((ev) => (
+                  <option key={ev.name} value={ev.name}>{eventLabel(ev.name)}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label>Evento para leads do <strong>Rotador</strong> (site/link)</Label>
+              <select
+                className="w-full border rounded-md h-9 px-2 text-sm bg-white"
+                value={form.event_rotator || ''}
+                onChange={(e) => setForm({ ...form, event_rotator: e.target.value })}
+              >
+                <option value="">Nenhum (não dispara)</option>
                 {META_EVENTS.map((ev) => (
                   <option key={ev.name} value={ev.name}>{eventLabel(ev.name)}</option>
                 ))}
               </select>
-              <p className="text-xs text-gray-400 mt-1">Evento enviado ao Meta quando o lead entra nesta etapa. Vazio = não dispara.</p>
+              <p className="text-xs text-gray-400 mt-1">Origens têm eventos válidos diferentes. O sistema dispara o evento conforme a origem do lead. Vazio = não dispara p/ aquela origem.</p>
             </div>
             <div>
               <Label>Termo-chave (atendente)</Label>

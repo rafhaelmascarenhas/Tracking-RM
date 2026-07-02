@@ -22,5 +22,12 @@ export const META_EVENTS: MetaEvent[] = [
   { name: 'Subscribe', description: 'O início de uma assinatura paga.' },
 ];
 
+// Eventos válidos p/ CTWA (business_messaging/WhatsApp). Difere do rotador:
+// o lead vira "LeadSubmitted" (não "Lead", que a Meta recusa nesse canal).
+export const META_EVENTS_CTWA: MetaEvent[] = [
+  { name: 'LeadSubmitted', description: 'Um lead que chegou por mensagem (CTWA/WhatsApp).' },
+  ...META_EVENTS.filter((e) => e.name !== 'Lead'),
+];
+
 // Rótulo exibido no dropdown, ex: "Purchase (Meta Ads)"
 export const eventLabel = (name: string) => `${name} (Meta Ads)`;

@@ -44,8 +44,26 @@ export async function applyStageToLead(opts: {
 
   if (alreadyFired) return { moved: true, fired: 0 };
 
+  // Origem do lead decide QUAL evento disparar (ctwa e rotador têm eventos
+  // individuais). ctwa_clid → ctwa; fbclid/click → rotator; senão orgânico.
+  const lead = await prisma.lead.findUnique({ where: { id: leadId } });
+  const src = lead?.ctwa_clid ? 'ctwa' : lead?.fbclid || lead?.click_time ? 'rotator' : 'organic';
+
   const events = await prisma.conversionEvent.findMany({ where: { journey_stage_id: stageId } });
-  for (const ev of events) {
+  // Escolhe evento da origem exata; fallback: source 'any', depois 'rotator'
+  // (website serve p/ orgânico). Dispara no máximo 1 evento por plataforma.
+  const pick = (platform: string) => {
+    const plat = events.filter((e) => e.platform === platform);
+    return (
+      plat.find((e) => e.source === src) ||
+      plat.find((e) => e.source === 'any') ||
+      (src === 'organic' ? plat.find((e) => e.source === 'rotator') : undefined) ||
+      null
+    );
+  };
+
+  const chosen = [pick('META')].filter(Boolean) as typeof events;
+  for (const ev of chosen) {
     await enqueueCapiEvent({
       leadId,
       eventName: ev.event_name,
@@ -56,7 +74,7 @@ export async function applyStageToLead(opts: {
       journeyStageId: stageId,
     });
   }
-  return { moved: true, fired: events.length };
+  return { moved: true, fired: chosen.length };
 }
 
 /**

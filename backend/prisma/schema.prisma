@@ -156,6 +156,9 @@ model ConversionEvent {
   id               String   @id @default(uuid())
   journey_stage_id String
   platform         String   // META | GOOGLE
+  // Origem do lead a que este evento se aplica. CTWA e rotador têm eventos
+  // válidos diferentes (business_messaging vs website), então são individuais.
+  source           String   @default("any") // ctwa | rotator | any
   event_name       String   // Purchase | Lead | ViewContent | etc.
   value            Float?   // valor padrão do evento (override por lead ao marcar conversão)
   currency         String   @default("BRL")
