@@ -46,6 +46,13 @@ export async function fireMetaCapi(payload: MetaCapiPayload): Promise<void> {
   // orgânico → 'system_generated'
   const actionSource = fbc ? 'website' : ctwaClid ? 'business_messaging' : 'system_generated';
 
+  // Meta só aceita uma lista fechada de eventos p/ business_messaging (CTWA).
+  // 'Lead' é INVÁLIDO nesse contexto (erro 2804066) — mapeia pro equivalente de
+  // mensagens. 'Purchase' já é válido, então mantém. Website/system seguem crus.
+  const CTWA_EVENT_MAP: Record<string, string> = { Lead: 'LeadSubmitted' };
+  const effectiveEventName =
+    actionSource === 'business_messaging' ? CTWA_EVENT_MAP[eventName] || eventName : eventName;
+
   // Purchase EXIGE value+currency no Meta; se o gatilho não tem valor, manda 0/BRL
   // pra não estourar "Purchase requires currency and value". Demais eventos só
   // enviam value quando há valor configurado.
@@ -63,7 +70,7 @@ export async function fireMetaCapi(payload: MetaCapiPayload): Promise<void> {
   const body = {
     data: [
       {
-        event_name: eventName,
+        event_name: effectiveEventName,
         event_time: Math.floor(Date.now() / 1000),
         action_source: actionSource,
         // Meta exige messaging_channel quando action_source = business_messaging (CTWA/WhatsApp)
