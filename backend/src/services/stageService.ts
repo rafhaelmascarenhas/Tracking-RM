@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { enqueueCapiEvent } from '../lib/queue';
+import { parseMoneyBR } from './triggerService';
 
 /**
  * Move um lead pra uma etapa da jornada e dispara os conversionEvents dela.
@@ -128,7 +129,16 @@ export async function applyKeywordStage(opts: {
   });
   if (!match) return null;
 
-  const r = await applyStageToLead({ workspaceId, leadId, stageId: match.id, mode: 'auto' });
+  // Valor relativo: se a frase do termo-chave trouxer um valor (ex: venda), usa
+  // ele no lugar do valor fixo configurado na etapa.
+  const parsedValue = parseMoneyBR(text);
+  const r = await applyStageToLead({
+    workspaceId,
+    leadId,
+    stageId: match.id,
+    overrideValue: parsedValue ?? undefined,
+    mode: 'auto',
+  });
   console.log(`[stage] keyword move lead=${leadId} -> "${match.name}" fired=${r.fired}`);
   return { id: match.id, name: match.name };
 }
