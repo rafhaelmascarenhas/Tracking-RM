@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { fetcher } from '@/lib/fetcher';
 
@@ -17,18 +18,32 @@ type Fire = {
   stage?: { name: string } | null;
 };
 
+type FiresResponse = {
+  items: Fire[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
 export function PixelFires() {
-  const [items, setItems] = useState<Fire[]>([]);
+  const [data, setData] = useState<FiresResponse | null>(null);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetcher('/pixel-fires').then(setItems).finally(() => setLoading(false));
-  }, []);
+    setLoading(true);
+    fetcher(`/pixel-fires?page=${page}`).then(setData).finally(() => setLoading(false));
+  }, [page]);
+
+  const items = data?.items ?? [];
 
   return (
     <div className="space-y-6">
       <h2 className="text-lg font-bold text-gray-800">Disparos de Pixel</h2>
-      <p className="text-sm text-gray-500 -mt-4">Últimos 50 eventos enviados ao pixel, com o retorno da plataforma.</p>
+      <p className="text-sm text-gray-500 -mt-4">
+        {data ? `${data.total} eventos enviados ao pixel, com o retorno da plataforma.` : 'Eventos enviados ao pixel, com o retorno da plataforma.'}
+      </p>
 
       <Card className="border-gray-200 shadow-sm overflow-hidden">
         <Table>
@@ -72,6 +87,32 @@ export function PixelFires() {
           </TableBody>
         </Table>
       </Card>
+
+      {data && data.totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-gray-500">
+            Página {data.page} de {data.totalPages}
+          </span>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Anterior
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= data.totalPages}
+              onClick={() => setPage((p) => Math.min(data.totalPages, p + 1))}
+            >
+              Próxima
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

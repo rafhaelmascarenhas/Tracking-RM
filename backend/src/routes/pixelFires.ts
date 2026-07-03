@@ -3,13 +3,21 @@ import { prisma } from '../lib/prisma';
 
 export const pixelFiresRouter = Router();
 
-// Últimos 50 disparos de pixel do workspace, com lead + etapa pra exibição.
+const PAGE_SIZE = 50;
+
+// Disparos de pixel do workspace, paginado, com lead + etapa pra exibição.
 pixelFiresRouter.get('/', async (req: Request, res: Response) => {
-  const fires = await prisma.pixelFire.findMany({
-    where: { workspace_id: req.workspaceId! },
-    orderBy: { fired_at: 'desc' },
-    take: 50,
-  });
+  const page = Math.max(1, Number(req.query.page) || 1);
+
+  const [total, fires] = await Promise.all([
+    prisma.pixelFire.count({ where: { workspace_id: req.workspaceId! } }),
+    prisma.pixelFire.findMany({
+      where: { workspace_id: req.workspaceId! },
+      orderBy: { fired_at: 'desc' },
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
+    }),
+  ]);
 
   const leadIds = [...new Set(fires.map((f) => f.lead_id))];
   const stageIds = [...new Set(fires.map((f) => f.journey_stage_id).filter(Boolean) as string[])];
@@ -20,11 +28,15 @@ pixelFiresRouter.get('/', async (req: Request, res: Response) => {
   const leadMap = new Map(leads.map((l) => [l.id, l]));
   const stageMap = new Map(stages.map((s) => [s.id, s]));
 
-  res.json(
-    fires.map((f) => ({
+  res.json({
+    items: fires.map((f) => ({
       ...f,
       lead: leadMap.get(f.lead_id) ?? null,
       stage: f.journey_stage_id ? stageMap.get(f.journey_stage_id) ?? null : null,
-    }))
-  );
+    })),
+    page,
+    pageSize: PAGE_SIZE,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / PAGE_SIZE)),
+  });
 });

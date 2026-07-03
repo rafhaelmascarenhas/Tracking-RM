@@ -23,6 +23,9 @@ interface MetaCapiPayload {
   // Valor da conversão (otimização por receita/ROAS no Meta)
   value?: number | null;
   currency?: string | null;
+  // Horário real do evento (ex: quando a etapa moveu). Default: agora.
+  // Existe pra backfill não carimbar evento antigo como "hoje" na Meta.
+  eventTimeMs?: number | null;
 }
 
 function sha256(value: string): string {
@@ -38,7 +41,7 @@ export interface MetaCapiResult {
 }
 
 export async function fireMetaCapi(payload: MetaCapiPayload): Promise<MetaCapiResult> {
-  const { pixelId, token, eventName, phone, utms, fbclid, ctwaClid, pageId, wabaId, clientIp, userAgent, clickTimeMs, eventId, value, currency } = payload;
+  const { pixelId, token, eventName, phone, utms, fbclid, ctwaClid, pageId, wabaId, clientIp, userAgent, clickTimeMs, eventId, value, currency, eventTimeMs } = payload;
 
   const normalizedPhone = phone.replace(/\D/g, '');
 
@@ -93,7 +96,7 @@ export async function fireMetaCapi(payload: MetaCapiPayload): Promise<MetaCapiRe
     data: [
       {
         event_name: effectiveEventName,
-        event_time: Math.floor(Date.now() / 1000),
+        event_time: Math.floor((eventTimeMs ?? Date.now()) / 1000),
         action_source: actionSource,
         // Meta exige messaging_channel quando action_source = business_messaging
         // (CTWA/WhatsApp). page_id/waba já foram pro user_data acima (subcode 2804116).

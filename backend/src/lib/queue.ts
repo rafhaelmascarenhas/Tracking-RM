@@ -9,6 +9,7 @@ type CapiJobData = {
   value?: number | null;
   currency?: string | null;
   journeyStageId?: string | null;
+  eventTimeMs?: number | null;
 };
 
 async function processCapiJob(data: CapiJobData) {
@@ -40,6 +41,7 @@ async function processCapiJob(data: CapiJobData) {
       clickTimeMs: lead.click_time ? lead.click_time.getTime() : null,
       value: data.value,
       currency: data.currency,
+      eventTimeMs: data.eventTimeMs,
       // dedupe se o site disparar o mesmo evento (1 evento = 1 significado)
       eventId: `${lead.id}:${data.eventName}`,
     });

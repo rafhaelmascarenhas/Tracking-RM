@@ -330,8 +330,15 @@ export function Conversations() {
         </Table>
       </div>
 
+      <div className="flex justify-center items-center gap-3 mt-4">
+        <span className="text-sm text-gray-500">
+          {statTotal} lead{statTotal === 1 ? '' : 's'} no total
+          {totalPages > 1 && ` · mostrando ${filtered.length} nesta página`}
+        </span>
+      </div>
+
       {totalPages > 1 && (
-        <div className="flex justify-center items-center gap-3 mt-4">
+        <div className="flex justify-center items-center gap-3 mt-2">
           <Button
             variant="outline"
             disabled={page <= 1 || loading}
