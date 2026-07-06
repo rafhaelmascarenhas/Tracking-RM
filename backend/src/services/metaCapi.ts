@@ -92,7 +92,7 @@ export async function fireMetaCapi(payload: MetaCapiPayload): Promise<MetaCapiRe
     customData.currency = currency || 'BRL';
   }
 
-  const body = {
+  const body: Record<string, unknown> = {
     data: [
       {
         event_name: effectiveEventName,
@@ -107,6 +107,13 @@ export async function fireMetaCapi(payload: MetaCapiPayload): Promise<MetaCapiRe
       },
     ],
   };
+
+  // Testar Eventos: se META_TEST_EVENT_CODE setado, evento aparece em tempo real na
+  // aba "Testar Eventos" do Gerenciador (não conta como conversão real). Remover a
+  // env depois de validar. test_event_code vai no NÍVEL TOPO do body (irmão de data).
+  if (process.env.META_TEST_EVENT_CODE) {
+    body.test_event_code = process.env.META_TEST_EVENT_CODE;
+  }
 
   const res = await fetch(
     `https://graph.facebook.com/v19.0/${pixelId}/events?access_token=${token}`,
@@ -146,7 +153,7 @@ export async function firePageViewCapi(opts: {
   if (clientIp) userData.client_ip_address = clientIp;
   if (userAgent) userData.client_user_agent = userAgent;
 
-  const body = {
+  const body: Record<string, unknown> = {
     data: [{
       event_name: 'ViewContent',
       event_time: Math.floor(Date.now() / 1000),
@@ -155,6 +162,7 @@ export async function firePageViewCapi(opts: {
       user_data: userData,
     }],
   };
+  if (process.env.META_TEST_EVENT_CODE) body.test_event_code = process.env.META_TEST_EVENT_CODE;
 
   const res = await fetch(
     `https://graph.facebook.com/v19.0/${pixelId}/events?access_token=${token}`,
