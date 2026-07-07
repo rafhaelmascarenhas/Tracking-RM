@@ -3,10 +3,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { MessageSquare, Download, Filter, Search, ChevronRight, Shuffle, Smartphone, RefreshCw, ChevronLeft } from 'lucide-react';
+import { MessageSquare, Download, Search, ChevronRight, Shuffle, Smartphone, RefreshCw, ChevronLeft } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { fetcher, patcher } from '@/lib/fetcher';
+import { fetcher, patcher, downloadFile } from '@/lib/fetcher';
 
 type Lead = {
   id: string;
@@ -65,6 +65,7 @@ export function Conversations() {
   const [convValue, setConvValue] = useState('');
   const [marking, setMarking] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [stats, setStats] = useState({ total: 0, meta: 0, untracked: 0 });
@@ -102,6 +103,21 @@ export function Conversations() {
   const refresh = () => {
     setRefreshing(true);
     loadLeads(pageRef.current).finally(() => setRefreshing(false));
+  };
+
+  // Baixa os leads filtrados (mesma busca/data da tabela) em CSV.
+  const onDownload = async () => {
+    setDownloading(true);
+    try {
+      const q = new URLSearchParams();
+      if (searchRef.current.trim()) q.set('search', searchRef.current.trim());
+      if (dateFromRef.current) q.set('dateFrom', dateFromRef.current);
+      if (dateToRef.current) q.set('dateTo', dateToRef.current);
+      const qs = q.toString();
+      await downloadFile(`/leads/export${qs ? `?${qs}` : ''}`, `conversas-${new Date().toISOString().slice(0, 10)}.csv`);
+    } finally {
+      setDownloading(false);
+    }
   };
 
   // Carga inicial + auto-refresh
@@ -261,11 +277,8 @@ export function Conversations() {
             <Button variant="outline" onClick={refresh} disabled={refreshing} title="Atualizar lista" className="text-blue-600 border-transparent bg-blue-50 hover:bg-blue-100 rounded-full w-10 h-10 p-0 flex items-center justify-center">
                <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
             </Button>
-            <Button variant="outline" className="text-blue-600 border-transparent bg-blue-50 hover:bg-blue-100 rounded-full w-10 h-10 p-0 flex items-center justify-center">
-               <Filter className="w-4 h-4" />
-            </Button>
-            <Button variant="outline" className="text-blue-600 border-transparent bg-blue-50 hover:bg-blue-100 rounded-full w-10 h-10 p-0 flex items-center justify-center">
-               <Download className="w-4 h-4" />
+            <Button variant="outline" onClick={onDownload} disabled={downloading || leads.length === 0} title="Baixar dados (CSV)" className="text-blue-600 border-transparent bg-blue-50 hover:bg-blue-100 rounded-full w-10 h-10 p-0 flex items-center justify-center">
+               <Download className={`w-4 h-4 ${downloading ? 'animate-pulse' : ''}`} />
             </Button>
             <Button variant="ghost" className="text-blue-600 font-medium text-[14px] hover:bg-blue-50 rounded-full px-4">
                Alterar Etapa em Lote <ChevronRight className="w-4 h-4 ml-1" />

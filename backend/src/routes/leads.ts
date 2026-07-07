@@ -70,6 +70,53 @@ leadsRouter.get('/', async (req: Request, res: Response) => {
   });
 });
 
+// Exporta os leads filtrados (busca + datas) em CSV — botão "Baixar dados".
+// Fica ANTES de '/:lead_id' pra não ser capturado como id.
+leadsRouter.get('/export', async (req: Request, res: Response) => {
+  const search   = ((req.query.search   as string) || '').trim();
+  const dateFrom = (req.query.dateFrom  as string) || '';
+  const dateTo   = (req.query.dateTo    as string) || '';
+
+  const where: any = { workspace_id: req.workspaceId! };
+  if (search) where.OR = [{ phone_number: { contains: search } }, { name: { contains: search } }];
+  if (dateFrom || dateTo) {
+    where.created_at = {};
+    if (dateFrom) where.created_at.gte = new Date(dateFrom);
+    if (dateTo)   where.created_at.lte = new Date(dateTo + 'T23:59:59');
+  }
+
+  const leads = await prisma.lead.findMany({
+    where,
+    include: {
+      journeyStage: { select: { name: true } },
+      whatsappConnection: { select: { session_name: true } },
+      messages: { orderBy: { timestamp: 'desc' }, take: 1 },
+    },
+    orderBy: { created_at: 'desc' },
+    take: 10000,
+  });
+
+  const origem = (l: typeof leads[number]) =>
+    l.fbclid ? 'Meta' : l.ctwa_clid ? 'Meta CTWA' : l.utm_source || 'Não rastreada';
+  const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const header = ['nome', 'telefone', 'origem', 'etapa', 'numero_atendimento', 'utm_source', 'utm_campaign', 'criado_em', 'ultima_mensagem'];
+  const rows = leads.map((l) => [
+    l.name ?? '',
+    l.phone_number,
+    origem(l),
+    l.journeyStage?.name ?? '',
+    l.whatsappConnection?.session_name ?? '',
+    l.utm_source ?? '',
+    l.utm_campaign ?? '',
+    new Date(l.created_at).toISOString(),
+    l.messages?.[0]?.content ?? '',
+  ].map(esc).join(','));
+  const csv = '﻿' + [header.map(esc).join(','), ...rows].join('\r\n');
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="conversas-${new Date().toISOString().slice(0, 10)}.csv"`);
+  res.send(csv);
+});
+
 leadsRouter.get('/:lead_id', async (req: Request, res: Response) => {
   const lead = await prisma.lead.findFirst({
     where: { id: req.params.lead_id, workspace_id: req.workspaceId! },

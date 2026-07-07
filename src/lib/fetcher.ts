@@ -27,6 +27,24 @@ async function request(method: string, path: string, body?: any) {
   return res.json();
 }
 
+// Baixa um arquivo (ex: CSV) do backend com auth e dispara o download no browser.
+export async function downloadFile(path: string, filename: string) {
+  const token = await getToken();
+  const res = await fetch(`${API_URL}/api${path}`, {
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Download ${path} failed: ${res.status}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export const fetcher = (path: string) => request('GET', path);
 export const poster = (path: string, body?: any) => request('POST', path, body);
 export const patcher = (path: string, body?: any) => request('PATCH', path, body);
