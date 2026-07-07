@@ -55,14 +55,15 @@ export async function fireMetaCapi(payload: MetaCapiPayload): Promise<MetaCapiRe
   if (clientIp) userData.client_ip_address = clientIp;
   if (userAgent) userData.client_user_agent = userAgent;
 
-  // fbc = clique em URL (rotador) → 'website'
-  // ctwa_clid = anúncio msg direta → normalmente 'business_messaging', MAS a Meta
-  // recusa com subcode 2804131 ("dataset sem Página associada") nesse dataset e não
-  // há tela/endpoint que resolva o vínculo (ver checkpoint 2026-07-03). Até liberar
-  // do lado Meta, manda como 'system_generated' — ctwa_clid segue no user_data pra
-  // atribuição, só não declara a fonte que a Meta bloqueia.
-  // orgânico → 'system_generated'
-  const actionSource: string = fbc ? 'website' : 'system_generated';
+  // action_source: 'website' pra TODOS.
+  // Motivo: 'business_messaging' (o correto pra CTWA) é recusado pela Meta neste
+  // dataset — subcode 2804131 "dataset sem Página associada", sem tela que resolva
+  // o vínculo (ver checkpoint 2026-07-03). O fallback anterior 'system_generated' a
+  // Meta ACEITA (200) mas NÃO exibe/conta no Gerenciador — vendas ficavam invisíveis.
+  // 'website' aparece e conta (match por telefone; fbc quando há rotador; ctwa_clid
+  // segue no user_data). Atribuição ao anúncio é mais fraca sem business_messaging,
+  // mas o evento passa a ser visível. Voltar a business_messaging quando a Meta liberar.
+  const actionSource: string = 'website';
 
   // page_id/whatsapp_business_account_id vão DENTRO de user_data (não no nível do
   // evento) — subcode 2804116 diz explicitamente "nos dados do usuário".
