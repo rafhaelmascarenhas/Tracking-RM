@@ -21,7 +21,10 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 app.use(cors());
-app.use(express.json());
+// Limite 10mb (default do express é 100kb). Webhooks CTWA trazem dados do anúncio
+// (externalAdReply, thumbnail) e mídia citada que estouram 100kb -> 413
+// PayloadTooLargeError -> handler nem roda -> lead/atribuição/conversão perdidos.
+app.use(express.json({ limit: '10mb' }));
 
 // Public routes
 app.use('/api/webhooks', webhookRouter);
