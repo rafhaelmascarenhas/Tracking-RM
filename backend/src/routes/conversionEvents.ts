@@ -31,6 +31,36 @@ conversionEventsRouter.post('/', async (req: Request, res: Response) => {
   res.status(201).json(event);
 });
 
+conversionEventsRouter.patch('/:id', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { platform, event_name, value, currency, journey_stage_id } = req.body;
+
+  const event = await prisma.conversionEvent.findFirst({
+    where: { id, journeyStage: { workspace_id: req.workspaceId! } },
+  });
+  if (!event) return res.status(404).json({ error: 'Not found' });
+
+  // Se mudou a etapa, valida que a nova é do mesmo workspace.
+  if (journey_stage_id && journey_stage_id !== event.journey_stage_id) {
+    const stage = await prisma.journeyStage.findFirst({
+      where: { id: journey_stage_id, workspace_id: req.workspaceId! },
+    });
+    if (!stage) return res.status(404).json({ error: 'Stage not found' });
+  }
+
+  const updated = await prisma.conversionEvent.update({
+    where: { id },
+    data: {
+      ...(platform ? { platform } : {}),
+      ...(event_name ? { event_name } : {}),
+      ...(journey_stage_id ? { journey_stage_id } : {}),
+      ...(currency ? { currency } : {}),
+      value: value === '' || value == null ? null : Number(value),
+    },
+  });
+  res.json(updated);
+});
+
 conversionEventsRouter.delete('/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   const event = await prisma.conversionEvent.findFirst({

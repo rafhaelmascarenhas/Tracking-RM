@@ -29,6 +29,21 @@ type FiresResponse = {
   eventTypes: string[];
 };
 
+// Janela de páginas: 1 … (atual-1) atual (atual+1) … total
+function pageWindow(current: number, total: number): (number | '...')[] {
+  const pages = new Set<number>([1, total]);
+  for (let i = current - 1; i <= current + 1; i++) if (i >= 1 && i <= total) pages.add(i);
+  const sorted = [...pages].sort((a, b) => a - b);
+  const out: (number | '...')[] = [];
+  let prev = 0;
+  for (const n of sorted) {
+    if (n - prev > 1) out.push('...');
+    out.push(n);
+    prev = n;
+  }
+  return out;
+}
+
 export function PixelFires() {
   const [data, setData] = useState<FiresResponse | null>(null);
   const [page, setPage] = useState(1);
@@ -40,6 +55,26 @@ export function PixelFires() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [eventFilter, setEventFilter] = useState('all');
+
+  // Presets de data (Hoje / 7 dias / 30 dias). ymd em horário local.
+  const ymd = (d: Date) => {
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  };
+  const setPreset = (days: number) => {
+    const to = new Date();
+    const from = new Date();
+    from.setDate(from.getDate() - (days - 1));
+    setDateFrom(ymd(from));
+    setDateTo(ymd(to));
+  };
+  const activePreset = (days: number) => {
+    if (!dateTo || !dateFrom) return false;
+    const to = new Date();
+    const from = new Date();
+    from.setDate(from.getDate() - (days - 1));
+    return dateFrom === ymd(from) && dateTo === ymd(to);
+  };
 
   // String de query dos filtros (sem a página) — reutilizada no fetch e no export.
   const filterQuery = () => {
@@ -86,6 +121,18 @@ export function PixelFires() {
 
       {/* Toolbar de filtros */}
       <div className="flex flex-wrap gap-3 items-center bg-white p-3 rounded-2xl shadow-sm border border-gray-200/60">
+        <div className="flex items-center gap-1">
+          {([['Hoje', 1], ['7 dias', 7], ['30 dias', 30]] as [string, number][]).map(([label, days]) => (
+            <button
+              key={days}
+              onClick={() => setPreset(days)}
+              className={`h-9 px-3 text-sm rounded-full font-medium transition ${activePreset(days) ? 'bg-blue-600 text-white' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         <div className="flex items-center gap-2">
           <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9 text-sm w-[150px] bg-gray-50 border-transparent focus:bg-white focus:border-blue-500 rounded-full px-3" />
           <span className="text-gray-400 text-sm">até</span>
@@ -161,27 +208,26 @@ export function PixelFires() {
       </Card>
 
       {data && data.totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-gray-500">
-            Página {data.page} de {data.totalPages}
-          </span>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-            >
-              Anterior
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page >= data.totalPages}
-              onClick={() => setPage((p) => Math.min(data.totalPages, p + 1))}
-            >
-              Próxima
-            </Button>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <span className="text-sm text-gray-500">{data.total} eventos · página {data.page} de {data.totalPages}</span>
+          <div className="flex items-center gap-1">
+            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>‹</Button>
+            {pageWindow(data.page, data.totalPages).map((n, i) =>
+              n === '...' ? (
+                <span key={`e${i}`} className="px-2 text-gray-400">…</span>
+              ) : (
+                <Button
+                  key={n}
+                  variant={n === data.page ? 'default' : 'outline'}
+                  size="sm"
+                  className="w-9 h-9 p-0"
+                  onClick={() => setPage(n as number)}
+                >
+                  {n}
+                </Button>
+              )
+            )}
+            <Button variant="outline" size="sm" disabled={page >= data.totalPages} onClick={() => setPage((p) => Math.min(data.totalPages, p + 1))}>›</Button>
           </div>
         </div>
       )}
