@@ -14,8 +14,9 @@ leadsRouter.get('/', async (req: Request, res: Response) => {
   const search   = ((req.query.search   as string) || '').trim();
   const dateFrom = (req.query.dateFrom  as string) || '';
   const dateTo   = (req.query.dateTo    as string) || '';
+  const origin   = (req.query.origin    as string) || '';
 
-  // Where com filtros da tabela (busca + datas)
+  // Where com filtros da tabela (busca + datas + origem rotador/ctwa)
   const where: any = { workspace_id: req.workspaceId! };
   if (search) {
     where.OR = [
@@ -28,6 +29,8 @@ leadsRouter.get('/', async (req: Request, res: Response) => {
     if (dateFrom) where.created_at.gte = new Date(dateFrom);
     if (dateTo)   where.created_at.lte = new Date(dateTo + 'T23:59:59');
   }
+  if (origin === 'rotator') where.fbclid = { not: null };
+  if (origin === 'ctwa') where.ctwa_clid = { not: null };
 
   // Stats globais (sem filtros de busca/data — visão geral permanente)
   const statsBase = { workspace_id: req.workspaceId! };
@@ -60,8 +63,20 @@ leadsRouter.get('/', async (req: Request, res: Response) => {
     }),
   ]);
 
+  // Valor de conversão (soma dos disparos de pixel com sucesso) por lead da página atual.
+  const leadIds = leads.map((l) => l.id);
+  const valueGroups = leadIds.length
+    ? await prisma.pixelFire.groupBy({
+        by: ['lead_id'],
+        where: { lead_id: { in: leadIds }, status: 'success', value: { not: null } },
+        _sum: { value: true },
+      })
+    : [];
+  const valueMap = new Map(valueGroups.map((g) => [g.lead_id, g._sum.value ?? 0]));
+  const leadsWithValue = leads.map((l) => ({ ...l, conversion_value: valueMap.get(l.id) ?? 0 }));
+
   res.json({
-    leads,
+    leads: leadsWithValue,
     total,
     page,
     pages: Math.ceil(total / limit) || 1,
@@ -76,6 +91,7 @@ leadsRouter.get('/export', async (req: Request, res: Response) => {
   const search   = ((req.query.search   as string) || '').trim();
   const dateFrom = (req.query.dateFrom  as string) || '';
   const dateTo   = (req.query.dateTo    as string) || '';
+  const origin   = (req.query.origin    as string) || '';
 
   const where: any = { workspace_id: req.workspaceId! };
   if (search) where.OR = [{ phone_number: { contains: search } }, { name: { contains: search } }];
@@ -84,6 +100,8 @@ leadsRouter.get('/export', async (req: Request, res: Response) => {
     if (dateFrom) where.created_at.gte = new Date(dateFrom);
     if (dateTo)   where.created_at.lte = new Date(dateTo + 'T23:59:59');
   }
+  if (origin === 'rotator') where.fbclid = { not: null };
+  if (origin === 'ctwa') where.ctwa_clid = { not: null };
 
   const leads = await prisma.lead.findMany({
     where,
@@ -96,10 +114,20 @@ leadsRouter.get('/export', async (req: Request, res: Response) => {
     take: 10000,
   });
 
+  const leadIds = leads.map((l) => l.id);
+  const valueGroups = leadIds.length
+    ? await prisma.pixelFire.groupBy({
+        by: ['lead_id'],
+        where: { lead_id: { in: leadIds }, status: 'success', value: { not: null } },
+        _sum: { value: true },
+      })
+    : [];
+  const valueMap = new Map(valueGroups.map((g) => [g.lead_id, g._sum.value ?? 0]));
+
   const origem = (l: typeof leads[number]) =>
-    l.fbclid ? 'Meta' : l.ctwa_clid ? 'Meta CTWA' : l.utm_source || 'Não rastreada';
+    l.fbclid ? 'Rotador' : l.ctwa_clid ? 'Meta CTWA' : l.utm_source || 'Não rastreada';
   const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const header = ['nome', 'telefone', 'origem', 'etapa', 'numero_atendimento', 'utm_source', 'utm_campaign', 'criado_em', 'ultima_mensagem'];
+  const header = ['nome', 'telefone', 'origem', 'etapa', 'numero_atendimento', 'utm_source', 'utm_campaign', 'valor_conversao', 'criado_em', 'ultima_mensagem'];
   const rows = leads.map((l) => [
     l.name ?? '',
     l.phone_number,
@@ -108,6 +136,7 @@ leadsRouter.get('/export', async (req: Request, res: Response) => {
     l.whatsappConnection?.session_name ?? '',
     l.utm_source ?? '',
     l.utm_campaign ?? '',
+    valueMap.get(l.id) ?? 0,
     new Date(l.created_at).toISOString(),
     l.messages?.[0]?.content ?? '',
   ].map(esc).join(','));

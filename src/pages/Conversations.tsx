@@ -20,6 +20,7 @@ type Lead = {
   fbclid?: string | null;
   ctwa_clid?: string | null;
   created_at: string;
+  conversion_value?: number;
   journeyStage?: { name: string } | null;
   whatsappConnection?: { session_name: string; phone_number: string | null } | null;
   messages?: { id: string; direction: string; content: string; timestamp: string }[];
@@ -58,7 +59,7 @@ export function Conversations() {
   const [detail, setDetail] = useState<LeadDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [stages, setStages] = useState<{ id: string; name: string }[]>([]);
-  const [originFilter, setOriginFilter] = useState<'all' | 'meta' | 'google' | 'untracked'>('all');
+  const [originFilter, setOriginFilter] = useState<'all' | 'meta' | 'google' | 'untracked' | 'rotator' | 'ctwa'>('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [convStage, setConvStage] = useState('');
@@ -75,16 +76,19 @@ export function Conversations() {
   const dateFromRef = useRef('');
   const dateToRef = useRef('');
   const pageRef = useRef(1);
+  const originFilterRef = useRef<typeof originFilter>('all');
   searchRef.current = search;
   dateFromRef.current = dateFrom;
   dateToRef.current = dateTo;
   pageRef.current = page;
+  originFilterRef.current = originFilter;
 
   const buildUrl = (p: number) => {
     const q = new URLSearchParams({ page: String(p), limit: String(LIMIT) });
     if (searchRef.current.trim()) q.set('search', searchRef.current.trim());
     if (dateFromRef.current) q.set('dateFrom', dateFromRef.current);
     if (dateToRef.current) q.set('dateTo', dateToRef.current);
+    if (originFilterRef.current === 'rotator' || originFilterRef.current === 'ctwa') q.set('origin', originFilterRef.current);
     return `/leads?${q}`;
   };
 
@@ -113,6 +117,7 @@ export function Conversations() {
       if (searchRef.current.trim()) q.set('search', searchRef.current.trim());
       if (dateFromRef.current) q.set('dateFrom', dateFromRef.current);
       if (dateToRef.current) q.set('dateTo', dateToRef.current);
+      if (originFilterRef.current === 'rotator' || originFilterRef.current === 'ctwa') q.set('origin', originFilterRef.current);
       const qs = q.toString();
       await downloadFile(`/leads/export${qs ? `?${qs}` : ''}`, `conversas-${new Date().toISOString().slice(0, 10)}.csv`);
     } finally {
@@ -138,7 +143,7 @@ export function Conversations() {
       loadLeads(1).finally(() => setLoading(false));
     }, 350);
     return () => clearTimeout(t);
-  }, [search, dateFrom, dateTo]); // eslint-disable-line
+  }, [search, dateFrom, dateTo, originFilter]); // eslint-disable-line
 
   const goToPage = (p: number) => {
     if (p < 1 || p > totalPages) return;
@@ -184,6 +189,7 @@ export function Conversations() {
     if (originFilter === 'meta' && !isMeta(l)) return false;
     if (originFilter === 'google' && !isGoogle(l)) return false;
     if (originFilter === 'untracked' && (l.utm_source || l.fbclid || l.ctwa_clid)) return false;
+    // rotator/ctwa já filtrados no backend (buildUrl) — sem filtro client-side extra aqui.
     return true;
   });
 
@@ -266,6 +272,8 @@ export function Conversations() {
               className="appearance-none bg-transparent text-[14px] text-gray-700 font-medium pl-2 pr-6 outline-none cursor-pointer w-full"
             >
               <option value="all">Todas as Origens</option>
+              <option value="rotator">Rotador</option>
+              <option value="ctwa">Meta CTWA</option>
               <option value="meta">Meta Ads</option>
               <option value="google">Google Ads</option>
               <option value="untracked">Não rastreada</option>
@@ -295,6 +303,7 @@ export function Conversations() {
               <TableHead className="font-semibold">Número</TableHead>
               <TableHead className="font-semibold">Origem</TableHead>
               <TableHead className="font-semibold">Etapa da Jornada</TableHead>
+              <TableHead className="font-semibold">Valor de Conversão</TableHead>
               <TableHead className="font-semibold">Primeira Mensagem</TableHead>
               <TableHead className="font-semibold">Última Mensagem ↓</TableHead>
             </TableRow>
@@ -302,11 +311,11 @@ export function Conversations() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-20 text-gray-500 h-[200px]">Carregando...</TableCell>
+                <TableCell colSpan={7} className="text-center py-20 text-gray-500 h-[200px]">Carregando...</TableCell>
               </TableRow>
             ) : filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-20 text-gray-500 h-[200px]">
+                <TableCell colSpan={7} className="text-center py-20 text-gray-500 h-[200px]">
                   Nenhuma conversa encontrada.
                 </TableCell>
               </TableRow>
@@ -325,6 +334,13 @@ export function Conversations() {
                   </TableCell>
                   <TableCell><OriginBadge l={l} /></TableCell>
                   <TableCell>{l.journeyStage?.name || '-'}</TableCell>
+                  <TableCell>
+                    {l.conversion_value ? (
+                      <span className="font-medium text-green-700">R$ {l.conversion_value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                    ) : (
+                      <span className="text-gray-400 text-xs">-</span>
+                    )}
+                  </TableCell>
                   <TableCell>{new Date(l.created_at).toLocaleString('pt-BR')}</TableCell>
                   <TableCell>
                     {l.messages?.[0] ? (

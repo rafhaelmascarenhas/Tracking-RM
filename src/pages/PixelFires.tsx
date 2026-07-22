@@ -55,6 +55,7 @@ export function PixelFires() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [eventFilter, setEventFilter] = useState('all');
+  const [originFilter, setOriginFilter] = useState<'all' | 'rotator' | 'ctwa'>('all');
 
   // Presets de data (Hoje / 7 dias / 30 dias). ymd em horário local.
   const ymd = (d: Date) => {
@@ -82,6 +83,7 @@ export function PixelFires() {
     if (dateFrom) p.set('from', dateFrom);
     if (dateTo) p.set('to', dateTo);
     if (eventFilter !== 'all') p.set('event', eventFilter);
+    if (originFilter !== 'all') p.set('origin', originFilter);
     return p.toString();
   };
 
@@ -95,8 +97,8 @@ export function PixelFires() {
   };
 
   // Recarrega quando muda página ou filtro. Filtro volta pra página 1.
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [page, dateFrom, dateTo, eventFilter]);
-  useEffect(() => { setPage(1); /* eslint-disable-next-line */ }, [dateFrom, dateTo, eventFilter]);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [page, dateFrom, dateTo, eventFilter, originFilter]);
+  useEffect(() => { setPage(1); /* eslint-disable-next-line */ }, [dateFrom, dateTo, eventFilter, originFilter]);
 
   const onDownload = async () => {
     setDownloading(true);
@@ -110,7 +112,7 @@ export function PixelFires() {
 
   const items = data?.items ?? [];
   const eventTypes = data?.eventTypes ?? [];
-  const hasFilter = !!(dateFrom || dateTo || eventFilter !== 'all');
+  const hasFilter = !!(dateFrom || dateTo || eventFilter !== 'all' || originFilter !== 'all');
 
   return (
     <div className="space-y-6">
@@ -150,8 +152,18 @@ export function PixelFires() {
           ))}
         </select>
 
+        <select
+          value={originFilter}
+          onChange={(e) => setOriginFilter(e.target.value as typeof originFilter)}
+          className="h-9 text-sm text-gray-700 font-medium bg-gray-50 border border-transparent rounded-full px-4 outline-none cursor-pointer focus:bg-white focus:border-blue-500"
+        >
+          <option value="all">Todas as Origens</option>
+          <option value="rotator">Rotador</option>
+          <option value="ctwa">Meta CTWA</option>
+        </select>
+
         {hasFilter && (
-          <button onClick={() => { setDateFrom(''); setDateTo(''); setEventFilter('all'); }} className="text-xs text-gray-400 hover:text-gray-600">limpar</button>
+          <button onClick={() => { setDateFrom(''); setDateTo(''); setEventFilter('all'); setOriginFilter('all'); }} className="text-xs text-gray-400 hover:text-gray-600">limpar</button>
         )}
 
         <div className="ml-auto flex items-center gap-2">
@@ -173,14 +185,15 @@ export function PixelFires() {
               <TableHead>Retorno</TableHead>
               <TableHead>Etapa da Jornada</TableHead>
               <TableHead>Evento</TableHead>
+              <TableHead>Valor de Conversão</TableHead>
               <TableHead>Plataforma</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-12">Carregando...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="text-center py-12">Carregando...</TableCell></TableRow>
             ) : items.length === 0 ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-12 text-gray-500">{hasFilter ? 'Nenhum disparo no filtro selecionado.' : 'Nenhum disparo realizado ainda.'}</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="text-center py-12 text-gray-500">{hasFilter ? 'Nenhum disparo no filtro selecionado.' : 'Nenhum disparo realizado ainda.'}</TableCell></TableRow>
             ) : items.map((f) => (
               <TableRow key={f.id}>
                 <TableCell className="whitespace-nowrap">{new Date(f.fired_at).toLocaleString('pt-BR')}</TableCell>
@@ -198,7 +211,13 @@ export function PixelFires() {
                 <TableCell>{f.stage?.name || '-'}</TableCell>
                 <TableCell>
                   <span className="font-medium">{f.event_name}</span>
-                  {f.value != null && <span className="text-xs text-gray-400 ml-1">{f.currency} {f.value}</span>}
+                </TableCell>
+                <TableCell>
+                  {f.value != null ? (
+                    <span className="font-medium text-green-700">{f.currency || 'R$'} {f.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                  ) : (
+                    <span className="text-gray-400 text-xs">-</span>
+                  )}
                 </TableCell>
                 <TableCell>{f.platform}</TableCell>
               </TableRow>
