@@ -60,6 +60,8 @@ export function Conversations() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [stages, setStages] = useState<{ id: string; name: string }[]>([]);
   const [originFilter, setOriginFilter] = useState<'all' | 'meta' | 'google' | 'untracked' | 'rotator' | 'ctwa'>('all');
+  const [eventFilter, setEventFilter] = useState('all');
+  const [eventTypes, setEventTypes] = useState<string[]>([]);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [convStage, setConvStage] = useState('');
@@ -77,11 +79,13 @@ export function Conversations() {
   const dateToRef = useRef('');
   const pageRef = useRef(1);
   const originFilterRef = useRef<typeof originFilter>('all');
+  const eventFilterRef = useRef('all');
   searchRef.current = search;
   dateFromRef.current = dateFrom;
   dateToRef.current = dateTo;
   pageRef.current = page;
   originFilterRef.current = originFilter;
+  eventFilterRef.current = eventFilter;
 
   const buildUrl = (p: number) => {
     const q = new URLSearchParams({ page: String(p), limit: String(LIMIT) });
@@ -89,6 +93,7 @@ export function Conversations() {
     if (dateFromRef.current) q.set('dateFrom', dateFromRef.current);
     if (dateToRef.current) q.set('dateTo', dateToRef.current);
     if (originFilterRef.current === 'rotator' || originFilterRef.current === 'ctwa') q.set('origin', originFilterRef.current);
+    if (eventFilterRef.current !== 'all') q.set('event', eventFilterRef.current);
     return `/leads?${q}`;
   };
 
@@ -98,6 +103,7 @@ export function Conversations() {
     if (r && !Array.isArray(r)) {
       setTotalPages(r.pages ?? 1);
       if (r.stats) setStats(r.stats);
+      if (r.eventTypes) setEventTypes(r.eventTypes);
     }
   };
 
@@ -118,6 +124,7 @@ export function Conversations() {
       if (dateFromRef.current) q.set('dateFrom', dateFromRef.current);
       if (dateToRef.current) q.set('dateTo', dateToRef.current);
       if (originFilterRef.current === 'rotator' || originFilterRef.current === 'ctwa') q.set('origin', originFilterRef.current);
+      if (eventFilterRef.current !== 'all') q.set('event', eventFilterRef.current);
       const qs = q.toString();
       await downloadFile(`/leads/export${qs ? `?${qs}` : ''}`, `conversas-${new Date().toISOString().slice(0, 10)}.csv`);
     } finally {
@@ -143,7 +150,7 @@ export function Conversations() {
       loadLeads(1).finally(() => setLoading(false));
     }, 350);
     return () => clearTimeout(t);
-  }, [search, dateFrom, dateTo, originFilter]); // eslint-disable-line
+  }, [search, dateFrom, dateTo, originFilter, eventFilter]); // eslint-disable-line
 
   const goToPage = (p: number) => {
     if (p < 1 || p > totalPages) return;
@@ -277,6 +284,20 @@ export function Conversations() {
               <option value="meta">Meta Ads</option>
               <option value="google">Google Ads</option>
               <option value="untracked">Não rastreada</option>
+            </select>
+            <svg className="w-4 h-4 text-gray-400 absolute right-3 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+         </div>
+
+         <div className="relative flex items-center border border-gray-100 rounded-full pl-5 pr-3 py-2 min-w-[160px] shadow-[0_2px_8px_rgba(0,0,0,0.04)] bg-white">
+            <select
+              value={eventFilter}
+              onChange={(e) => setEventFilter(e.target.value)}
+              className="appearance-none bg-transparent text-[14px] text-gray-700 font-medium pr-6 outline-none cursor-pointer w-full"
+            >
+              <option value="all">Todos os eventos</option>
+              {eventTypes.map((ev) => (
+                <option key={ev} value={ev}>{ev}</option>
+              ))}
             </select>
             <svg className="w-4 h-4 text-gray-400 absolute right-3 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
          </div>

@@ -15,8 +15,9 @@ leadsRouter.get('/', async (req: Request, res: Response) => {
   const dateFrom = (req.query.dateFrom  as string) || '';
   const dateTo   = (req.query.dateTo    as string) || '';
   const origin   = (req.query.origin    as string) || '';
+  const event    = (req.query.event     as string) || '';
 
-  // Where com filtros da tabela (busca + datas + origem rotador/ctwa)
+  // Where com filtros da tabela (busca + datas + origem rotador/ctwa + evento disparado)
   const where: any = { workspace_id: req.workspaceId! };
   if (search) {
     where.OR = [
@@ -31,10 +32,18 @@ leadsRouter.get('/', async (req: Request, res: Response) => {
   }
   if (origin === 'rotator') where.fbclid = { not: null };
   if (origin === 'ctwa') where.ctwa_clid = { not: null };
+  if (event && event !== 'all') {
+    const fires = await prisma.pixelFire.findMany({
+      where: { workspace_id: req.workspaceId!, event_name: event },
+      select: { lead_id: true },
+      distinct: ['lead_id'],
+    });
+    where.id = { in: fires.map((f) => f.lead_id) };
+  }
 
   // Stats globais (sem filtros de busca/data — visão geral permanente)
   const statsBase = { workspace_id: req.workspaceId! };
-  const [statsTotal, statsMeta, statsUntracked, total, leads] = await Promise.all([
+  const [statsTotal, statsMeta, statsUntracked, total, leads, eventGroups] = await Promise.all([
     prisma.lead.count({ where: statsBase }),
     prisma.lead.count({
       where: {
@@ -61,6 +70,7 @@ leadsRouter.get('/', async (req: Request, res: Response) => {
       skip: (page - 1) * limit,
       take: limit,
     }),
+    prisma.pixelFire.groupBy({ by: ['event_name'], where: { workspace_id: req.workspaceId! } }),
   ]);
 
   // Valor de conversão (soma dos disparos de pixel com sucesso) por lead da página atual.
@@ -82,6 +92,7 @@ leadsRouter.get('/', async (req: Request, res: Response) => {
     pages: Math.ceil(total / limit) || 1,
     limit,
     stats: { total: statsTotal, meta: statsMeta, untracked: statsUntracked },
+    eventTypes: eventGroups.map((g) => g.event_name).sort(),
   });
 });
 
@@ -92,6 +103,7 @@ leadsRouter.get('/export', async (req: Request, res: Response) => {
   const dateFrom = (req.query.dateFrom  as string) || '';
   const dateTo   = (req.query.dateTo    as string) || '';
   const origin   = (req.query.origin    as string) || '';
+  const event    = (req.query.event     as string) || '';
 
   const where: any = { workspace_id: req.workspaceId! };
   if (search) where.OR = [{ phone_number: { contains: search } }, { name: { contains: search } }];
@@ -102,6 +114,14 @@ leadsRouter.get('/export', async (req: Request, res: Response) => {
   }
   if (origin === 'rotator') where.fbclid = { not: null };
   if (origin === 'ctwa') where.ctwa_clid = { not: null };
+  if (event && event !== 'all') {
+    const fires = await prisma.pixelFire.findMany({
+      where: { workspace_id: req.workspaceId!, event_name: event },
+      select: { lead_id: true },
+      distinct: ['lead_id'],
+    });
+    where.id = { in: fires.map((f) => f.lead_id) };
+  }
 
   const leads = await prisma.lead.findMany({
     where,
