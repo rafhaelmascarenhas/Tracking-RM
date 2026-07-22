@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { applyStageToLead } from '../services/stageService';
+import { resolveMetaAdNames } from '../services/metaAdNames';
 
 export const leadsRouter = Router();
 
@@ -207,7 +208,24 @@ leadsRouter.get('/:lead_id', async (req: Request, res: Response) => {
     };
   }
 
-  res.json({ ...lead, origin });
+  // UTMs gravadas com {{campaign.id}} chegam como número puro. Troca pelo nome
+  // (Graph API + cache) pra exibição; mantém o valor cru nos campos originais.
+  const names = await resolveMetaAdNames(req.workspaceId!, [
+    lead.utm_campaign,
+    lead.utm_term,
+    lead.utm_content,
+  ]);
+  const named = (v: string | null) => (v && names.get(v.trim())) || null;
+
+  res.json({
+    ...lead,
+    origin,
+    utm_names: {
+      campaign: named(lead.utm_campaign),
+      term: named(lead.utm_term),
+      content: named(lead.utm_content),
+    },
+  });
 });
 
 leadsRouter.patch('/:lead_id/stage', async (req: Request, res: Response) => {

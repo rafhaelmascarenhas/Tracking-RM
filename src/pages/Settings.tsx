@@ -13,6 +13,7 @@ type Workspace = {
   meta_capi_token?: string | null;
   meta_page_id?: string | null;
   meta_waba_id?: string | null;
+  meta_ads_token?: string | null;
   google_ads_id?: string | null;
   gtm_id?: string | null;
   webhook_url?: string | null;
@@ -126,6 +127,11 @@ export function Settings() {
             <Label>WhatsApp Business Account ID (opcional)</Label>
             <Input value={ws.meta_waba_id || ''} onChange={(e) => update('meta_waba_id', e.target.value)} placeholder="Alternativa ao Page ID" />
             <p className="text-xs text-muted-foreground">Use se não tiver o Page ID. Basta um dos dois para os eventos CTWA funcionarem.</p>
+          </div>
+          <div className="space-y-2">
+            <Label>Token de leitura de anúncios (opcional)</Label>
+            <Input type="password" value={ws.meta_ads_token || ''} onChange={(e) => update('meta_ads_token', e.target.value)} placeholder="Deixe vazio para usar o CAPI Access Token" />
+            <p className="text-xs text-muted-foreground">Precisa da permissão <code>ads_read</code>. Usado para mostrar o nome da campanha/conjunto/anúncio quando a URL do anúncio envia apenas o ID.</p>
           </div>
         </CardContent>
       </Card>

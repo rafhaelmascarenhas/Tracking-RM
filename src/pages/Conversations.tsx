@@ -42,6 +42,8 @@ function OriginBadge({ l }: { l: Lead }) {
 
 type LeadDetail = Lead & {
   messages?: { id: string; direction: string; content: string; timestamp: string }[];
+  // Nomes resolvidos via Graph API quando a UTM veio como ID do Meta.
+  utm_names?: { campaign: string | null; term: string | null; content: string | null } | null;
   origin?: {
     rotator_name: string | null;
     served_by: { session_name: string; phone_number: string | null } | null;
@@ -449,20 +451,26 @@ export function Conversations() {
               <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Origem</h3>
               <div className="rounded-2xl border border-gray-100 bg-gray-50/50 p-4 space-y-2 text-sm">
                 {(() => {
-                  const rows: [string, string | null | undefined][] = [
-                    ['Origem', detail?.utm_source || (detail?.fbclid ? 'Meta' : null) || (detail?.ctwa_clid ? 'Meta Direto' : null)],
-                    ['Campanha', detail?.utm_campaign],
-                    ['Conjunto', detail?.utm_term],
-                    ['Anúncio', detail?.utm_content],
+                  // Quando a UTM veio como ID do Meta, o backend devolve o nome em
+                  // utm_names — mostra o nome em destaque e o ID abaixo, discreto.
+                  const n = detail?.utm_names;
+                  const rows: [string, string | null | undefined, string | null | undefined][] = [
+                    ['Origem', detail?.utm_source || (detail?.fbclid ? 'Meta' : null) || (detail?.ctwa_clid ? 'Meta Direto' : null), null],
+                    ['Campanha', n?.campaign || detail?.utm_campaign, n?.campaign ? detail?.utm_campaign : null],
+                    ['Conjunto', n?.term || detail?.utm_term, n?.term ? detail?.utm_term : null],
+                    ['Anúncio', n?.content || detail?.utm_content, n?.content ? detail?.utm_content : null],
                   ];
                   const any = rows.some(([, v]) => v);
                   if (!any) {
                     return <div className="flex justify-between"><span className="text-gray-500">Campanha</span><span className="text-gray-400">Não rastreada</span></div>;
                   }
-                  return rows.filter(([, v]) => v).map(([label, v]) => (
+                  return rows.filter(([, v]) => v).map(([label, v, id]) => (
                     <div key={label} className="flex justify-between gap-3">
                       <span className="text-gray-500 shrink-0">{label}</span>
-                      <span className="font-medium text-gray-900 text-right break-words">{v}</span>
+                      <span className="text-right break-words">
+                        <span className="font-medium text-gray-900">{v}</span>
+                        {id && <span className="block text-[10px] font-mono text-gray-400">{id}</span>}
+                      </span>
                     </div>
                   ));
                 })()}

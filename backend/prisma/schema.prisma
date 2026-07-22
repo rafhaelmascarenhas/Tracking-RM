@@ -16,6 +16,9 @@ model Workspace {
   // evento, senão a Meta recusa (subcode 2804116). Basta um dos dois.
   meta_page_id      String?
   meta_waba_id      String?
+  // Token com permissão ads_read — resolve ID de campanha/conjunto/anúncio pra nome.
+  // Opcional: se vazio, tenta o meta_capi_token (system user costuma ter ads_read).
+  meta_ads_token    String?
   google_ads_id     String?
   gtm_id            String?
   webhook_url       String?
@@ -140,6 +143,18 @@ model PixelFire {
 
   @@index([workspace_id, fired_at])
   @@map("pixel_fires")
+}
+
+// Cache de nome de objeto do Meta Ads (campanha/conjunto/anúncio).
+// A URL do anúncio manda ID quando configurada com {{campaign.id}} em vez de
+// {{campaign.name}}; aqui guardamos o nome resolvido via Graph API pra não
+// bater na API a cada exibição do lead.
+model MetaAdName {
+  meta_id    String   @id // ID do objeto no Meta (campanha, conjunto ou anúncio)
+  name       String
+  fetched_at DateTime @default(now())
+
+  @@map("meta_ad_names")
 }
 
 // Dedupe do disparo de etapa: garante que mover um lead pra uma etapa dispara
