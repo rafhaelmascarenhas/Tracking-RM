@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { supabase } from './lib/supabase';
+import { fetchAuthConfig, getPanelToken } from './lib/panelAuth';
 import { Layout } from './components/Layout';
 import { Dashboard } from './pages/Dashboard';
 import { Conversations } from './pages/Conversations';
@@ -28,14 +29,18 @@ export default function App() {
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // If no Supabase config is found, we fall back to a mock session
-  // so the dashboard UI is still visible in preview.
-  const isMock = !import.meta.env.VITE_SUPABASE_URL;
-
+  // Sem Supabase o painel usa a senha unica do backend. Quem manda e o
+  // /api/auth/config: se o servidor exige senha, so entra com token valido.
+  // Antes daqui saia uma sessao falsa e o painel inteiro ficava aberto.
   useEffect(() => {
-    if (isMock || !supabase) {
-      setSession({ user: { email: 'demo@example.com' } });
-      setLoading(false);
+    if (!supabase) {
+      fetchAuthConfig()
+        .then(({ auth_required }) => {
+          const token = getPanelToken();
+          setSession(!auth_required || token ? { user: { email: 'painel' } } : null);
+        })
+        .catch(() => setSession(getPanelToken() ? { user: { email: 'painel' } } : null))
+        .finally(() => setLoading(false));
       return;
     }
 
@@ -51,7 +56,7 @@ export default function App() {
     });
 
     return () => subscription?.unsubscribe();
-  }, [isMock]);
+  }, []);
 
   if (loading) return null;
 

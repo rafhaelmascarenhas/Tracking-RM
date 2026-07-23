@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
+import { clearPanelToken } from '@/lib/panelAuth';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -49,6 +50,9 @@ export function Layout() {
     if (supabase) {
       await supabase.auth.signOut();
     }
+    // Modo senha unica: sem isso o botao Sair nao saia de nada.
+    clearPanelToken();
+    window.location.href = '/login';
   };
 
   return (

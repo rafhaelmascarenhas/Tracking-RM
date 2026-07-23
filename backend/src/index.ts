@@ -15,6 +15,7 @@ import { rotatorsRouter } from './routes/rotators';
 import { reportsRouter } from './routes/reports';
 import { triggersRouter } from './routes/triggers';
 import { pixelFiresRouter } from './routes/pixelFires';
+import { authRouter } from './routes/auth';
 import { authMiddleware } from './middleware/auth';
 
 const app = express();
@@ -28,6 +29,7 @@ app.use(express.json({ limit: '10mb' }));
 
 // Public routes
 app.use('/api/webhooks', webhookRouter);
+app.use('/api/auth', authRouter);
 app.use('/r', redirectRouter);
 app.use('/j', rotatorRedirectRouter);
 

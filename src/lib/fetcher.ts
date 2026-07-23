@@ -1,10 +1,15 @@
 import { API_BASE as API_URL } from './apiBase';
+import { getPanelToken, onUnauthorized } from './panelAuth';
 import { supabase } from './supabase';
 
 async function getToken() {
-  if (!supabase) return '';
-  const { data: { session } } = await supabase.auth.getSession();
-  return session?.access_token || '';
+  // Supabase, quando configurado, tem precedencia; senao vale o token da senha
+  // unica do painel.
+  if (supabase) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) return session.access_token;
+  }
+  return getPanelToken();
 }
 
 async function request(method: string, path: string, body?: any) {
@@ -17,6 +22,10 @@ async function request(method: string, path: string, body?: any) {
     },
     body: body ? JSON.stringify(body) : undefined,
   });
+  if (res.status === 401) {
+    onUnauthorized();
+    throw new Error('Sessao expirada, faca login de novo');
+  }
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`API ${method} ${path} failed: ${res.status} ${text}`);
