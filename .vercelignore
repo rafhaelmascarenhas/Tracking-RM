@@ -1,0 +1,9 @@
+# O deploy roda pelo Vercel CLI, que sobe os arquivos locais. Sem isso o .env de
+# dev vai junto e o build de prod acaba apontando pro localhost do dev.
+.env
+.env.*
+!.env.example
+
+node_modules
+dist
+backend

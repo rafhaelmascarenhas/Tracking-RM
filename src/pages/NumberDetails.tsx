@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowLeft, Save } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { fetcher, putter } from '@/lib/fetcher';
+import { PUBLIC_ORIGIN } from '@/lib/apiBase';
 
 type Conn = {
   id: string;
@@ -80,7 +81,7 @@ export function NumberDetails() {
           </div>
           <div className="space-y-2">
             <Label>Webhook URL para uazapi</Label>
-            <Input readOnly value={`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/webhooks/whatsapp`} />
+            <Input readOnly value={`${PUBLIC_ORIGIN}/api/webhooks/whatsapp`} />
             <p className="text-xs text-muted-foreground">Cole essa URL no painel da uazapi com evento <code>messages.upsert</code>.</p>
           </div>
         </CardContent>

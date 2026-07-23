@@ -12,6 +12,7 @@ import { Plus, Trash2, Pencil, Copy, Shuffle, ChevronUp, ChevronDown, MousePoint
 import { fetcher, poster, putter, deleter } from '@/lib/fetcher';
 import { Reports } from './Reports';
 import { Triggers } from './Triggers';
+import { PUBLIC_ORIGIN as PUBLIC_API_ORIGIN } from '@/lib/apiBase';
 
 type NumberConn = {
   id: string;
@@ -143,8 +144,7 @@ const DIST_LABELS: Record<string, string> = {
   FALLBACK: 'Fallback',
 };
 
-const PUBLIC_ORIGIN =
-  import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:3001');
+const PUBLIC_ORIGIN = PUBLIC_API_ORIGIN;
 
 export function Rotators() {
   const [items, setItems] = useState<Rotator[]>([]);

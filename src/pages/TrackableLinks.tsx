@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Plus, Trash2, Pencil, Copy } from 'lucide-react';
 import { fetcher, poster, putter, deleter } from '@/lib/fetcher';
+import { PUBLIC_ORIGIN } from '@/lib/apiBase';
 
 type Link = {
   id: string;
@@ -19,7 +20,7 @@ type Link = {
 
 const empty: Partial<Link> = { destination_url: '', utm_source: '', utm_medium: '', utm_campaign: '' };
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const API_URL = PUBLIC_ORIGIN;
 
 export function TrackableLinks() {
   const [items, setItems] = useState<Link[]>([]);
