@@ -36,6 +36,7 @@ model Workspace {
   trackableMessages   TrackableMessage[]
   trackableLinks      TrackableLink[]
   rotators            Rotator[]
+  group_rotators      GroupRotator[]
   conversionTriggers  ConversionTrigger[]
 
   @@map("workspaces")
@@ -288,6 +289,84 @@ model RotatorClick {
   rotator Rotator @relation(fields: [rotator_id], references: [id], onDelete: Cascade)
 
   @@map("rotator_clicks")
+}
+
+// Rotador de LINKS DE GRUPO do WhatsApp (chat.whatsapp.com/...).
+// Mesma mecânica do Rotator, mas o destino é um convite de grupo, não um número.
+// Diferenças relevantes:
+//  - não há prefilled_text/token: grupo não passa por wa.me, então não dá pra casar
+//    o clique com uma conversa. Por ora o rastreio é só clique + CAPI (ver GroupClick).
+//  - pixel/CAPI/GTM podem ser próprios do rotador (fallback: os do workspace).
+model GroupRotator {
+  id           String  @id @default(uuid())
+  workspace_id String
+  short_code   String  @unique
+  name         String
+  distribution String  @default("ROUND_ROBIN") // ROUND_ROBIN | WEIGHTED | FALLBACK
+  utm_source   String?
+  utm_medium   String?
+  utm_campaign String?
+  utm_term     String?
+  utm_content  String?
+  rr_counter   Int     @default(0)
+  active       Boolean @default(true)
+  // Landing page (Meta ads)
+  use_landing      Boolean @default(false)
+  landing_logo     String?
+  landing_title    String?
+  landing_cta      String?
+  redirect_seconds Int     @default(3)
+  // Pixel próprio deste rotador — se nulo, cai no do workspace.
+  meta_pixel_id   String?
+  meta_capi_token String?
+  gtm_id          String?
+  created_at      DateTime @default(now())
+
+  workspace Workspace     @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  targets   GroupTarget[]
+  clicks    GroupClick[]
+
+  @@map("group_rotators")
+}
+
+model GroupTarget {
+  id         String  @id @default(uuid())
+  rotator_id String
+  name       String  @default("")
+  invite_url String
+  weight     Int     @default(1)
+  priority   Int     @default(0)
+  active     Boolean @default(true)
+  // Grupo do WhatsApp lota (1024 membros). Ao bater max_clicks o grupo sai do
+  // pool automaticamente e o próximo assume. Nulo = sem limite.
+  max_clicks   Int?
+  clicks_count Int  @default(0)
+
+  rotator GroupRotator @relation(fields: [rotator_id], references: [id], onDelete: Cascade)
+  clicks  GroupClick[]
+
+  @@map("group_targets")
+}
+
+model GroupClick {
+  id         String   @id @default(uuid())
+  rotator_id String
+  target_id  String
+  fbclid     String?
+  gclid      String?
+  utm_source String?
+  utm_medium String?
+  utm_campaign String?
+  utm_term   String?
+  utm_content String?
+  ip_address String?
+  user_agent String?
+  created_at DateTime @default(now())
+
+  rotator GroupRotator @relation(fields: [rotator_id], references: [id], onDelete: Cascade)
+  target  GroupTarget  @relation(fields: [target_id], references: [id], onDelete: Cascade)
+
+  @@map("group_clicks")
 }
 
 // Gatilho de evento de conversão por mensagem (modelo Tintim + atribuição do rotador).

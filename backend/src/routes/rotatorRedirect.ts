@@ -20,7 +20,7 @@ function buildWaUrl(phone: string, prefilled: string, token: string, hideToken: 
   return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
 }
 
-function landingHtml(waUrl: string, opts: {
+export function landingHtml(waUrl: string, opts: {
   logo?: string | null;
   title?: string | null;
   cta?: string | null;

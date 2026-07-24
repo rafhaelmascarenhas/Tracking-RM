@@ -7,6 +7,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Conversations } from './pages/Conversations';
 import { TrackableLinks } from './pages/TrackableLinks';
 import { Rotators } from './pages/Rotators';
+import { GroupRotators } from './pages/GroupRotators';
 import { TrackableMessages } from './pages/TrackableMessages';
 import { PurchaseJourney } from './pages/PurchaseJourney';
 import { ConversionEvents } from './pages/ConversionEvents';
@@ -80,6 +81,7 @@ export default function App() {
         <Route path="conversations" element={<Conversations />} />
         <Route path="links" element={<TrackableLinks />} />
         <Route path="rotators" element={<Rotators />} />
+        <Route path="group-rotators" element={<GroupRotators />} />
         <Route path="messages" element={<TrackableMessages />} />
         <Route path="journey" element={<PurchaseJourney />} />
         <Route path="events" element={<ConversionEvents />} />

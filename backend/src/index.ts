@@ -12,6 +12,8 @@ import { workspaceRouter } from './routes/workspace';
 import { redirectRouter } from './routes/redirect';
 import { rotatorRedirectRouter } from './routes/rotatorRedirect';
 import { rotatorsRouter } from './routes/rotators';
+import { groupRedirectRouter } from './routes/groupRedirect';
+import { groupRotatorsRouter } from './routes/groupRotators';
 import { reportsRouter } from './routes/reports';
 import { triggersRouter } from './routes/triggers';
 import { pixelFiresRouter } from './routes/pixelFires';
@@ -32,6 +34,7 @@ app.use('/api/webhooks', webhookRouter);
 app.use('/api/auth', authRouter);
 app.use('/r', redirectRouter);
 app.use('/j', rotatorRedirectRouter);
+app.use('/g', groupRedirectRouter);
 
 // Protected routes
 app.use('/api', authMiddleware);
@@ -43,6 +46,7 @@ app.use('/api/journey-stages', journeyStagesRouter);
 app.use('/api/conversion-events', conversionEventsRouter);
 app.use('/api/numbers', numbersRouter);
 app.use('/api/rotators', rotatorsRouter);
+app.use('/api/group-rotators', groupRotatorsRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/triggers', triggersRouter);
 app.use('/api/pixel-fires', pixelFiresRouter);
