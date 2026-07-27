@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Plus, Settings, Trash2, QrCode, Loader2, CheckCircle2, RefreshCw, KeyRound } from 'lucide-react';
+import { Plus, Settings, Trash2, QrCode, Loader2, CheckCircle2, RefreshCw, KeyRound, Hash } from 'lucide-react';
 import { fetcher, poster, deleter } from '@/lib/fetcher';
 
 type Conn = {
@@ -20,6 +20,7 @@ type Conn = {
 };
 
 function StatusBadge({ status }: { status: string }) {
+  if (status === 'MANUAL') return <Badge variant="outline" className="text-amber-600 border-amber-300">Manual</Badge>;
   if (status === 'CONNECTED') return <Badge className="bg-emerald-500">Conectado</Badge>;
   if (status === 'CONNECTING') return <Badge className="bg-amber-500">Conectando</Badge>;
   return <Badge variant="destructive">Desconectado</Badge>;
@@ -163,6 +164,27 @@ export function Numbers() {
     }
   };
 
+  // Número manual: entra no rotador só com o telefone, sem instância nem QR.
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualName, setManualName] = useState('');
+  const [manualPhone, setManualPhone] = useState('');
+  const [manualSaving, setManualSaving] = useState(false);
+  const [manualErr, setManualErr] = useState<string | null>(null);
+
+  const createManual = async () => {
+    if (!manualName.trim()) { setManualErr('Dê um nome ao número'); return; }
+    setManualSaving(true); setManualErr(null);
+    try {
+      await poster('/numbers/manual', { session_name: manualName.trim(), phone_number: manualPhone });
+      setManualOpen(false); setManualName(''); setManualPhone('');
+      load();
+    } catch (e: any) {
+      setManualErr(e.message || 'Erro ao cadastrar');
+    } finally {
+      setManualSaving(false);
+    }
+  };
+
   const del = async (id: string) => {
     if (!confirm('Excluir conexão? A instância na uazapi também será removida.')) return;
     await deleter(`/numbers/${id}`); load();
@@ -215,6 +237,45 @@ export function Numbers() {
               <DialogFooter>
                 <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
                 <Button onClick={create} disabled={creating}>{creating ? 'Criando...' : 'Criar e conectar'}</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* Número sem sessão: só o telefone, pra usar no rotador. */}
+          <Dialog open={manualOpen} onOpenChange={(o) => { setManualOpen(o); if (!o) setManualErr(null); }}>
+            <DialogTrigger asChild>
+              <button className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 transition-colors">
+                <Hash className="h-3 w-3" /> Adicionar número sem conectar
+              </button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Número sem conexão</DialogTitle>
+                <DialogDescription>
+                  Só o telefone. Entra no rodízio do rotador e abre o WhatsApp normalmente — mas
+                  <strong> não recebe webhook</strong>, então não há matching de conversa nem conversão automática nesse número.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3 py-4">
+                <div className="space-y-2">
+                  <Label>Nome do número</Label>
+                  <Input value={manualName} onChange={(e) => setManualName(e.target.value)} placeholder="ex: vendas-parceiro" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Telefone (DDI+DDD+número)</Label>
+                  <Input
+                    value={manualPhone}
+                    onChange={(e) => setManualPhone(e.target.value)}
+                    placeholder="5511999998888"
+                    className="font-mono text-sm"
+                    onKeyDown={(e) => e.key === 'Enter' && createManual()}
+                  />
+                </div>
+                {manualErr && <p className="text-xs text-red-500">{manualErr}</p>}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setManualOpen(false)}>Cancelar</Button>
+                <Button onClick={createManual} disabled={manualSaving}>{manualSaving ? 'Salvando...' : 'Salvar'}</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -286,13 +347,15 @@ export function Numbers() {
               ) : items.map((c) => (
                 <TableRow key={c.id}>
                   <TableCell className="font-medium">{c.session_name}{c.profile_name ? <span className="text-muted-foreground font-normal"> · {c.profile_name}</span> : null}</TableCell>
-                  <TableCell><Badge variant="outline">{c.provider === 'EVOLUTION' ? 'Evolution' : 'uazapi'}</Badge></TableCell>
+                  <TableCell><Badge variant="outline">{c.provider === 'MANUAL' ? 'Manual' : c.provider === 'EVOLUTION' ? 'Evolution' : 'uazapi'}</Badge></TableCell>
                   <TableCell>{c.phone_number || '-'}</TableCell>
                   <TableCell><StatusBadge status={c.status} /></TableCell>
                   <TableCell className="text-right space-x-2">
-                    <Button variant={c.status === 'CONNECTED' ? 'outline' : 'default'} size="sm" onClick={() => setQrConn(c)}>
-                      <QrCode className="h-4 w-4 mr-1" /> {c.status === 'CONNECTED' ? 'Reconectar' : 'Conectar'}
-                    </Button>
+                    {c.provider !== 'MANUAL' && (
+                      <Button variant={c.status === 'CONNECTED' ? 'outline' : 'default'} size="sm" onClick={() => setQrConn(c)}>
+                        <QrCode className="h-4 w-4 mr-1" /> {c.status === 'CONNECTED' ? 'Reconectar' : 'Conectar'}
+                      </Button>
+                    )}
                     <Button variant="outline" size="sm" asChild>
                       <Link to={`/numbers/${c.id}`}><Settings className="h-4 w-4" /></Link>
                     </Button>

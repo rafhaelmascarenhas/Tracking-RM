@@ -18,7 +18,8 @@ export async function pickTarget(rotatorId: string): Promise<TargetWithConnectio
   const actives = rotator.targets.filter((t) => t.active);
   let pool = rotator.distribute_offline
     ? actives
-    : actives.filter((t) => t.connection.status === 'CONNECTED');
+    // Número MANUAL não tem sessão, então nunca fica CONNECTED — entra sempre.
+    : actives.filter((t) => t.connection.status === 'CONNECTED' || t.connection.provider === 'MANUAL');
   if (pool.length === 0) {
     console.warn(`[rotator ${rotatorId}] nenhum número CONNECTED, usando fallback offline`);
     pool = actives;

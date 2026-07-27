@@ -20,6 +20,7 @@ type NumberConn = {
   session_name: string;
   phone_number?: string | null;
   status: string;
+  provider?: string;
 };
 
 type RotatorTarget = { id: string; connection_id: string; weight: number; priority: number };
@@ -485,9 +486,13 @@ export function Rotators() {
                         <span className="flex-1 text-sm cursor-pointer select-none" onClick={() => toggleTarget(n.id)}>
                           {n.session_name}{n.phone_number ? ` (${n.phone_number})` : ''}
                         </span>
-                        <Badge variant={n.status === 'CONNECTED' ? 'default' : 'destructive'} className="text-xs shrink-0">
-                          {n.status === 'CONNECTED' ? 'Conectado' : 'Offline'}
-                        </Badge>
+                        {n.provider === 'MANUAL' ? (
+                          <Badge variant="outline" className="text-xs shrink-0 text-amber-600 border-amber-300">Manual</Badge>
+                        ) : (
+                          <Badge variant={n.status === 'CONNECTED' ? 'default' : 'destructive'} className="text-xs shrink-0">
+                            {n.status === 'CONNECTED' ? 'Conectado' : 'Offline'}
+                          </Badge>
+                        )}
                         {checked && form.distribution === 'WEIGHTED' && (
                           <div className="flex items-center gap-1 shrink-0">
                             <Input type="number" min={1} max={100} value={entry!.weight} onChange={(e) => setPct(n.id, parseInt(e.target.value) || 1)} onClick={(e) => e.stopPropagation()} className="w-16 h-7 text-sm" />

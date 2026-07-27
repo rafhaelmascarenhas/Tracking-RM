@@ -89,6 +89,32 @@ numbersRouter.post('/', async (req: Request, res: Response) => {
   }
 });
 
+// Cadastra um número "manual": só o telefone, sem instância em nenhum provider.
+// Serve pra entrar no rodízio do rotador (o link wa.me é montado com o telefone).
+// Não recebe webhook, então não há matching de conversa nem status de sessão.
+numbersRouter.post('/manual', async (req: Request, res: Response) => {
+  const { session_name, phone_number } = req.body as { session_name?: string; phone_number?: string };
+  const name = session_name?.trim();
+  const digits = (phone_number || '').replace(/\D/g, '');
+
+  if (!name) return res.status(400).json({ error: 'Nome da sessão obrigatório' });
+  if (digits.length < 10 || digits.length > 15) {
+    return res.status(400).json({ error: 'Telefone inválido. Use DDI+DDD+número (ex: 5511999998888).' });
+  }
+
+  const conn = await prisma.whatsappConnection.create({
+    data: {
+      workspace_id: req.workspaceId!,
+      provider: 'MANUAL',
+      session_name: name,
+      phone_number: digits,
+      status: 'MANUAL',
+      is_imported: true, // não tenta apagar instância no provider ao deletar
+    },
+  });
+  res.status(201).json(conn);
+});
+
 // Importa um número JÁ conectado na uazapi, usando o token da instância.
 // Não lê QR e NÃO mexe no webhook (pra não roubar de outro sistema que use o
 // mesmo número). Só registra a conexão pra ler/enviar via token.
@@ -144,6 +170,9 @@ numbersRouter.post('/:id/reinit', async (req: Request, res: Response) => {
     if (conn.provider === 'EVOLUTION') {
       return res.status(400).json({ error: 'reinit não se aplica ao Evolution (sem token de instância). Use reconectar.' });
     }
+    if (conn.provider === 'MANUAL') {
+      return res.status(400).json({ error: 'reinit não se aplica a número manual.' });
+    }
 
     const cfg = await getWorkspaceUazapi(req.workspaceId!);
     const token = await initInstance(cfg, conn.session_name);
@@ -170,6 +199,9 @@ numbersRouter.post('/:id/sync-webhook', async (req: Request, res: Response) => {
       where: { id: req.params.id, workspace_id: req.workspaceId! },
     });
     if (!conn) return res.status(404).json({ error: 'Not found' });
+    if (conn.provider === 'MANUAL') {
+      return res.status(400).json({ error: 'Número manual não tem webhook.' });
+    }
 
     const url = webhookUrl(req);
     await providerSetWebhook(req.workspaceId!, conn, url);
@@ -186,6 +218,9 @@ numbersRouter.post('/:id/connect', async (req: Request, res: Response) => {
       where: { id: req.params.id, workspace_id: req.workspaceId! },
     });
     if (!conn) return res.status(404).json({ error: 'Not found' });
+    if (conn.provider === 'MANUAL') {
+      return res.status(400).json({ error: 'Número manual não tem sessão pra conectar.' });
+    }
 
     const s = await providerConnect(req.workspaceId!, conn);
     await syncConn(conn.id, s);
@@ -202,6 +237,7 @@ numbersRouter.get('/:id/status', async (req: Request, res: Response) => {
       where: { id: req.params.id, workspace_id: req.workspaceId! },
     });
     if (!conn) return res.status(404).json({ error: 'Not found' });
+    if (conn.provider === 'MANUAL') return res.json({ status: conn.status, qrcode: null });
     if (conn.provider !== 'EVOLUTION' && !conn.uazapi_token) return res.json({ status: conn.status, qrcode: null });
 
     const s = await providerStatus(req.workspaceId!, conn);
