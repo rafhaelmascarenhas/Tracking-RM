@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Plus, Settings, Trash2, QrCode, Loader2, CheckCircle2, RefreshCw, KeyRound, Hash } from 'lucide-react';
+import { Plus, Settings, Trash2, QrCode, Loader2, CheckCircle2, RefreshCw, KeyRound } from 'lucide-react';
 import { fetcher, poster, deleter } from '@/lib/fetcher';
 
 type Conn = {
@@ -133,7 +133,7 @@ export function Numbers() {
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
-  const [provider, setProvider] = useState<'UAZAPI' | 'EVOLUTION'>('UAZAPI');
+  const [provider, setProvider] = useState<'UAZAPI' | 'EVOLUTION' | 'MANUAL'>('UAZAPI');
   const [qrConn, setQrConn] = useState<Conn | null>(null);
 
   // Import por token (avançado / discreto)
@@ -151,6 +151,7 @@ export function Numbers() {
 
   const create = async () => {
     if (!name.trim()) { alert('Dê um nome ao número'); return; }
+    if (provider === 'MANUAL') return createManual();
     setCreating(true);
     try {
       const conn: Conn = await poster('/numbers', { session_name: name.trim(), provider });
@@ -165,23 +166,19 @@ export function Numbers() {
   };
 
   // Número manual: entra no rotador só com o telefone, sem instância nem QR.
-  const [manualOpen, setManualOpen] = useState(false);
-  const [manualName, setManualName] = useState('');
   const [manualPhone, setManualPhone] = useState('');
-  const [manualSaving, setManualSaving] = useState(false);
   const [manualErr, setManualErr] = useState<string | null>(null);
 
   const createManual = async () => {
-    if (!manualName.trim()) { setManualErr('Dê um nome ao número'); return; }
-    setManualSaving(true); setManualErr(null);
+    setCreating(true); setManualErr(null);
     try {
-      await poster('/numbers/manual', { session_name: manualName.trim(), phone_number: manualPhone });
-      setManualOpen(false); setManualName(''); setManualPhone('');
+      await poster('/numbers/manual', { session_name: name.trim(), phone_number: manualPhone });
+      setOpen(false); setName(''); setManualPhone(''); setProvider('UAZAPI');
       load();
     } catch (e: any) {
       setManualErr(e.message || 'Erro ao cadastrar');
     } finally {
-      setManualSaving(false);
+      setCreating(false);
     }
   };
 
@@ -213,12 +210,16 @@ export function Numbers() {
           <p className="text-muted-foreground mt-1">Conecte números lendo o QR code. Usados em rotadores e rastreamento.</p>
         </div>
         <div className="flex flex-col items-end gap-1">
-          <Dialog open={open} onOpenChange={setOpen}>
+          <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setManualErr(null); }}>
             <DialogTrigger asChild><Button><Plus className="mr-2 h-4 w-4" /> Adicionar número</Button></DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Novo número</DialogTitle>
-                <DialogDescription>Dê um nome (ex: Vendas SP). Criamos a instância e abrimos o QR na hora.</DialogDescription>
+                <DialogDescription>
+                  {provider === 'MANUAL'
+                    ? 'Só o telefone, sem conectar o WhatsApp. Entra no rodízio do rotador.'
+                    : 'Dê um nome (ex: Vendas SP). Criamos a instância e abrimos o QR na hora.'}
+                </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
@@ -230,52 +231,36 @@ export function Numbers() {
                   <div className="flex gap-2">
                     <Button type="button" variant={provider === 'UAZAPI' ? 'default' : 'outline'} size="sm" className="flex-1" onClick={() => setProvider('UAZAPI')}>uazapi</Button>
                     <Button type="button" variant={provider === 'EVOLUTION' ? 'default' : 'outline'} size="sm" className="flex-1" onClick={() => setProvider('EVOLUTION')}>Evolution</Button>
+                    <Button type="button" variant={provider === 'MANUAL' ? 'default' : 'outline'} size="sm" className="flex-1" onClick={() => setProvider('MANUAL')}>Sem conectar</Button>
                   </div>
-                  <p className="text-xs text-muted-foreground">Configure as credenciais do provider escolhido em Configurações.</p>
+                  {provider === 'MANUAL' ? (
+                    <p className="text-xs text-muted-foreground">
+                      Não lê QR e <strong>não recebe webhook</strong>: o número entra no rotador e abre o WhatsApp
+                      normalmente, mas não há matching de conversa nem conversão automática nele.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Configure as credenciais do provider escolhido em Configurações.</p>
+                  )}
                 </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-                <Button onClick={create} disabled={creating}>{creating ? 'Criando...' : 'Criar e conectar'}</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-
-          {/* Número sem sessão: só o telefone, pra usar no rotador. */}
-          <Dialog open={manualOpen} onOpenChange={(o) => { setManualOpen(o); if (!o) setManualErr(null); }}>
-            <DialogTrigger asChild>
-              <button className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 transition-colors">
-                <Hash className="h-3 w-3" /> Adicionar número sem conectar
-              </button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Número sem conexão</DialogTitle>
-                <DialogDescription>
-                  Só o telefone. Entra no rodízio do rotador e abre o WhatsApp normalmente — mas
-                  <strong> não recebe webhook</strong>, então não há matching de conversa nem conversão automática nesse número.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-3 py-4">
-                <div className="space-y-2">
-                  <Label>Nome do número</Label>
-                  <Input value={manualName} onChange={(e) => setManualName(e.target.value)} placeholder="ex: vendas-parceiro" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Telefone (DDI+DDD+número)</Label>
-                  <Input
-                    value={manualPhone}
-                    onChange={(e) => setManualPhone(e.target.value)}
-                    placeholder="5511999998888"
-                    className="font-mono text-sm"
-                    onKeyDown={(e) => e.key === 'Enter' && createManual()}
-                  />
-                </div>
+                {provider === 'MANUAL' && (
+                  <div className="space-y-2">
+                    <Label>Telefone (DDI+DDD+número)</Label>
+                    <Input
+                      value={manualPhone}
+                      onChange={(e) => setManualPhone(e.target.value)}
+                      placeholder="5511999998888"
+                      className="font-mono text-sm"
+                      onKeyDown={(e) => e.key === 'Enter' && create()}
+                    />
+                  </div>
+                )}
                 {manualErr && <p className="text-xs text-red-500">{manualErr}</p>}
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setManualOpen(false)}>Cancelar</Button>
-                <Button onClick={createManual} disabled={manualSaving}>{manualSaving ? 'Salvando...' : 'Salvar'}</Button>
+                <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
+                <Button onClick={create} disabled={creating}>
+                  {creating ? 'Salvando...' : provider === 'MANUAL' ? 'Salvar número' : 'Criar e conectar'}
+                </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
