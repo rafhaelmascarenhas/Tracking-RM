@@ -41,7 +41,7 @@ O trade-off é explícito na UI: número manual **não recebe webhook**, então 
 - **Guards nas rotas de sessão**: `reinit`, `sync-webhook` e `connect` retornam 400 com mensagem específica quando `provider === 'MANUAL'`. `GET /:id/status` retorna o status persistido sem chamar provider.
 - **Seleção de alvo no rotador**: o pool de `pickTarget` passa a aceitar `provider === 'MANUAL'` além de `status === 'CONNECTED'` quando `distribute_offline` está desligado. Sem essa regra, número manual seria filtrado sempre e só entraria pelo fallback de "nenhum número online".
 - **Sem mudança no contrato do rotador**: alvo de rotador continua referenciando uma conexão por id; peso e prioridade funcionam igual. Por isso a edição de rotador já existente cobre a história 9 sem código novo — a listagem de números do formulário passa a incluir os manuais.
-- **UI de números**: ação secundária discreta "Adicionar número sem conectar" (mesmo padrão visual da importação por token), abrindo diálogo com nome + telefone e o aviso sobre ausência de webhook.
+- **UI de números**: "Sem conectar" é a terceira opção de **Provider** dentro do diálogo "Novo número", ao lado de uazapi e Evolution. Escolher revela o campo de telefone e troca o texto de ajuda pelo aviso de que não há webhook. Primeira tentativa foi uma ação secundária discreta abaixo do botão ("Adicionar número sem conectar", padrão visual da importação por token) — ninguém achava, então foi movida pra dentro do diálogo.
 - **UI de rotadores**: o tipo do número no formulário passa a expor `provider`, e o badge de status vira Manual/Conectado/Offline.
 
 ## Testing Decisions
