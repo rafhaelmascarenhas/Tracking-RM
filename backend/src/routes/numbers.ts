@@ -56,6 +56,30 @@ numbersRouter.get('/:id', async (req: Request, res: Response) => {
   res.json(conn);
 });
 
+/**
+ * Reaponta o webhook da instância com a lista de eventos ATUAL do código.
+ * Instância criada antes de um evento novo entrar (ex: GROUP_PARTICIPANTS_UPDATE)
+ * fica assinada só nos antigos — o provider não atualiza sozinho, e a falta do
+ * evento é silenciosa: nenhum erro, só contagem parada em zero.
+ */
+numbersRouter.post('/:id/resync-webhook', async (req: Request, res: Response) => {
+  try {
+    const conn = await prisma.whatsappConnection.findFirst({
+      where: { id: req.params.id, workspace_id: req.workspaceId! },
+    });
+    if (!conn) return res.status(404).json({ error: 'Not found' });
+
+    await providerSetWebhook(
+      req.workspaceId!,
+      { provider: conn.provider, session_name: conn.session_name, uazapi_token: conn.uazapi_token },
+      webhookUrl(req)
+    );
+    res.json({ ok: true, webhook: webhookUrl(req) });
+  } catch (e) {
+    handleErr(res, e);
+  }
+});
+
 // Cria a conexão: inicializa a instância na uazapi e já aponta o webhook.
 numbersRouter.post('/', async (req: Request, res: Response) => {
   try {

@@ -6,6 +6,7 @@ import { matchTrackableMessage } from '../services/messageMatcher';
 import { matchRotatorClick } from '../services/rotatorService';
 import { evaluateTriggers } from '../services/triggerService';
 import { applyKeywordStage, applyFirstContactStage } from '../services/stageService';
+import { recordParticipantUpdate } from '../services/groupMemberService';
 
 export const webhookRouter = Router();
 
@@ -54,6 +55,20 @@ function adaptEvolutionPayload(body: any): void {
     return;
   }
 
+  // Entrada/saída de gente em grupo. Só chega se o número for ADMIN do grupo.
+  // data: { id: "120363...@g.us", author, participants: [...], action: "add"|"remove"|... }
+  if (ev === 'group-participants.update') {
+    const d = body?.data ?? {};
+    body.EventType = 'group_participants';
+    body.instanceName = body.instanceName ?? body.instance;
+    body.groupUpdate = {
+      groupJid: d?.id ?? '',
+      participants: Array.isArray(d?.participants) ? d.participants : [],
+      action: String(d?.action ?? ''),
+    };
+    return;
+  }
+
   // Outros eventos Evolution (ex: messages.update): marca como ignorável.
   body.EventType = ev.replace('.', '_');
 }
@@ -89,6 +104,29 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
         });
       }
       return res.json({ ok: true, handled: 'connection' });
+    }
+
+    // Entrada/saída em grupo do rotador — conta membros por grupo.
+    if (eventType === 'group_participants') {
+      const g = body.groupUpdate ?? {};
+      if (!g.groupJid || !instanceName) {
+        return res.json({ ok: true, skipped: 'group_participants sem jid/instance' });
+      }
+      const conn = await prisma.whatsappConnection.findFirst({
+        where: { session_name: instanceName },
+        select: { workspace_id: true },
+      });
+      if (!conn) {
+        return res.json({ ok: true, skipped: 'connection not found' });
+      }
+      const result = await recordParticipantUpdate({
+        workspaceId: conn.workspace_id,
+        groupJid: g.groupJid,
+        participants: g.participants,
+        action: g.action,
+      });
+      console.log(`[webhook] GROUP ${g.action} jid=${g.groupJid} +${result.added} -${result.removed}`);
+      return res.json({ ok: true, handled: 'group_participants', ...result });
     }
 
     // Só processa mensagens novas (não recibos messages_update).

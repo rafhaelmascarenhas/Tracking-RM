@@ -37,6 +37,7 @@ model Workspace {
   trackableLinks      TrackableLink[]
   rotators            Rotator[]
   group_rotators      GroupRotator[]
+  group_members       GroupMember[]
   conversionTriggers  ConversionTrigger[]
 
   @@map("workspaces")
@@ -341,11 +342,42 @@ model GroupTarget {
   // pool automaticamente e o próximo assume. Nulo = sem limite.
   max_clicks   Int?
   clicks_count Int  @default(0)
+  // JID do grupo (ex: 120363...@g.us). Resolvido pelo código do convite via
+  // provider (Evolution: GET /group/inviteInfo). É o que liga o evento de entrada
+  // ao target — sem ele o membro entra sem target_id.
+  group_jid    String? @unique
 
-  rotator GroupRotator @relation(fields: [rotator_id], references: [id], onDelete: Cascade)
+  rotator GroupRotator  @relation(fields: [rotator_id], references: [id], onDelete: Cascade)
   clicks  GroupClick[]
+  members GroupMember[]
 
   @@map("group_targets")
+}
+
+// Entrada de pessoa em grupo do rotador. Alimentado pelo evento
+// group-participants.update (action=add) do provider — exige que o número
+// conectado seja ADMIN do grupo, senão o provider não recebe o evento.
+//
+// Atribuição ao anúncio é PROBABILÍSTICA por enquanto: o clique tem fbclid mas
+// não tem telefone; a entrada tem telefone mas não tem fbclid. O elo é a janela
+// de tempo no mesmo target. Ver docs/specs para o modelo determinístico.
+model GroupMember {
+  id           String    @id @default(uuid())
+  workspace_id String
+  rotator_id   String?
+  target_id    String?
+  group_jid    String
+  phone_number String
+  joined_at    DateTime  @default(now())
+  // Saída do grupo (action=remove). Nulo = ainda dentro.
+  left_at      DateTime?
+
+  workspace Workspace    @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  target    GroupTarget? @relation(fields: [target_id], references: [id], onDelete: SetNull)
+
+  @@unique([group_jid, phone_number])
+  @@index([workspace_id, joined_at])
+  @@map("group_members")
 }
 
 model GroupClick {

@@ -118,19 +118,55 @@ export async function createInstance(cfg: EvolutionConfig, name: string): Promis
   });
 }
 
-/** Configura o webhook da instância (mensagens + conexão). */
+/**
+ * Configura o webhook da instância (mensagens + conexão + entradas em grupo).
+ *
+ * GROUP_PARTICIPANTS_UPDATE só chega se o número conectado for ADMIN do grupo.
+ * Instâncias criadas antes desse evento existir precisam de re-set (rota
+ * POST /numbers/:id/resync-webhook) — o Evolution não adiciona evento sozinho.
+ */
 export async function setWebhook(cfg: EvolutionConfig, name: string, url: string): Promise<void> {
-  await call(cfg, 'POST', `/webhook/set/${encodeURIComponent(name)}`, {
-    body: {
-      webhook: {
-        enabled: true,
-        url,
-        webhookByEvents: false,
-        webhookBase64: false,
-        events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'],
+  const CORE_EVENTS = ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'];
+  const post = (events: string[]) =>
+    call(cfg, 'POST', `/webhook/set/${encodeURIComponent(name)}`, {
+      body: {
+        webhook: { enabled: true, url, webhookByEvents: false, webhookBase64: false, events },
       },
-    },
-  });
+    });
+
+  try {
+    await post([...CORE_EVENTS, 'GROUP_PARTICIPANTS_UPDATE']);
+  } catch (e: any) {
+    // Versão de Evolution que não conhece o evento rejeita a lista INTEIRA — e o
+    // chamador engole o erro num warn. Sem este retry o número ficaria sem webhook
+    // nenhum, quebrando o rotador de números por causa de um recurso de grupo.
+    console.warn(
+      `[evolution] GROUP_PARTICIPANTS_UPDATE recusado em "${name}" (${e.message}). ` +
+        'Reassinando só os eventos core — contagem de membros de grupo fica indisponível.'
+    );
+    await post(CORE_EVENTS);
+  }
+}
+
+/**
+ * Resolve o JID do grupo (120363...@g.us) a partir do código do convite.
+ * Aceita a URL completa ou só o código. Retorna null se o convite for inválido
+ * ou o grupo não for acessível pela instância.
+ */
+export async function fetchGroupJidByInvite(
+  cfg: EvolutionConfig,
+  name: string,
+  inviteUrlOrCode: string
+): Promise<string | null> {
+  const code = inviteUrlOrCode.replace(/^.*chat\.whatsapp\.com\/(?:invite\/)?/, '').trim();
+  if (!code) return null;
+  const data = await call(
+    cfg,
+    'GET',
+    `/group/inviteInfo/${encodeURIComponent(name)}?inviteCode=${encodeURIComponent(code)}`
+  ).catch(() => null);
+  const jid = data?.id ?? data?.groupJid ?? null;
+  return typeof jid === 'string' && jid.endsWith('@g.us') ? jid : null;
 }
 
 /** Inicia conexão (gera/renova QR). */

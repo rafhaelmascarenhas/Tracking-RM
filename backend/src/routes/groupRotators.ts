@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
 import { normalizeInviteUrl } from '../services/groupRotatorService';
+import { fetchGroupJidByInvite, getWorkspaceEvolution } from '../services/evolution';
 
 export const groupRotatorsRouter = Router();
 
@@ -172,9 +173,12 @@ groupRotatorsRouter.put('/:id', async (req: Request, res: Response) => {
     }
     const old = await prisma.groupTarget.findMany({
       where: { rotator_id: existing.id },
-      select: { invite_url: true, clicks_count: true },
+      select: { invite_url: true, clicks_count: true, group_jid: true },
     });
     const counts = Object.fromEntries(old.map((t) => [t.invite_url, t.clicks_count]));
+    // group_jid também sobrevive à edição: perdê-lo desliga a contagem de membros
+    // do grupo e deixa as entradas novas órfãs de target.
+    const jids = Object.fromEntries(old.map((t) => [t.invite_url, t.group_jid]));
 
     await prisma.groupTarget.deleteMany({ where: { rotator_id: existing.id } });
     await prisma.groupTarget.createMany({
@@ -182,8 +186,21 @@ groupRotatorsRouter.put('/:id', async (req: Request, res: Response) => {
         ...t,
         rotator_id: existing.id,
         clicks_count: counts[t.invite_url] ?? 0,
+        group_jid: jids[t.invite_url] ?? null,
       })),
     });
+
+    // deleteMany zerou o target_id dos membros (onDelete: SetNull). Reata pelo JID.
+    const recreated = await prisma.groupTarget.findMany({
+      where: { rotator_id: existing.id, group_jid: { not: null } },
+      select: { id: true, group_jid: true },
+    });
+    for (const t of recreated) {
+      await prisma.groupMember.updateMany({
+        where: { group_jid: t.group_jid! },
+        data: { target_id: t.id, rotator_id: existing.id },
+      });
+    }
   }
 
   const rotator = await prisma.groupRotator.update({
@@ -214,6 +231,117 @@ groupRotatorsRouter.put('/:id', async (req: Request, res: Response) => {
   });
 
   res.json(rotator);
+});
+
+/**
+ * Resolve o JID de cada grupo do rotador a partir do link de convite.
+ * Sem JID o evento de entrada chega mas não sabe a que target pertence.
+ * Idempotente: só toca nos targets que ainda estão sem JID.
+ *
+ * Exige uma conexão EVOLUTION conectada no workspace (a uazapi não expõe
+ * inviteInfo, então rotador de grupo com contagem de membros pede Evolution).
+ */
+groupRotatorsRouter.post('/:id/resolve-jids', async (req: Request, res: Response) => {
+  const rotator = await prisma.groupRotator.findFirst({
+    where: { id: req.params.id, workspace_id: req.workspaceId! },
+    select: { id: true },
+  });
+  if (!rotator) return res.status(404).json({ error: 'Not found' });
+
+  const conn = await prisma.whatsappConnection.findFirst({
+    where: { workspace_id: req.workspaceId!, provider: 'EVOLUTION', status: 'CONNECTED' },
+    select: { session_name: true },
+  });
+  if (!conn) {
+    return res.status(400).json({
+      error: 'Nenhum número Evolution conectado. A resolução do grupo depende de um.',
+    });
+  }
+
+  let cfg;
+  try {
+    cfg = await getWorkspaceEvolution(req.workspaceId!);
+  } catch (e: any) {
+    return res.status(e.status ?? 502).json({ error: e.message });
+  }
+
+  const pending = await prisma.groupTarget.findMany({
+    where: { rotator_id: rotator.id, group_jid: null },
+    select: { id: true, invite_url: true },
+  });
+
+  const results: { target_id: string; group_jid: string | null }[] = [];
+  for (const t of pending) {
+    const jid = await fetchGroupJidByInvite(cfg, conn.session_name, t.invite_url).catch(() => null);
+    if (jid) {
+      // Outro target pode já ter esse JID (mesmo grupo cadastrado 2x) — group_jid
+      // é unique, então ignora o conflito em vez de derrubar a rota inteira.
+      await prisma.groupTarget
+        .update({ where: { id: t.id }, data: { group_jid: jid } })
+        .catch(() => null);
+      await prisma.groupMember.updateMany({
+        where: { group_jid: jid },
+        data: { target_id: t.id, rotator_id: rotator.id },
+      });
+    }
+    results.push({ target_id: t.id, group_jid: jid });
+  }
+
+  res.json({ ok: true, resolved: results.filter((r) => r.group_jid).length, results });
+});
+
+/**
+ * Contagem de entradas por grupo. `members` = quem está dentro agora,
+ * `joined_total` = entradas históricas (inclui quem já saiu).
+ */
+groupRotatorsRouter.get('/:id/members', async (req: Request, res: Response) => {
+  const rotator = await prisma.groupRotator.findFirst({
+    where: { id: req.params.id, workspace_id: req.workspaceId! },
+    select: { id: true },
+  });
+  if (!rotator) return res.status(404).json({ error: 'Not found' });
+
+  const from = req.query.from ? new Date(String(req.query.from)) : undefined;
+  const to = req.query.to ? new Date(String(req.query.to) + 'T23:59:59') : undefined;
+  const period =
+    from || to ? { joined_at: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {};
+
+  const targets = await prisma.groupTarget.findMany({
+    where: { rotator_id: rotator.id },
+    orderBy: { priority: 'asc' },
+    select: { id: true, name: true, invite_url: true, group_jid: true, clicks_count: true },
+  });
+
+  const byTarget = await Promise.all(
+    targets.map(async (t) => {
+      const [joined, inside] = await Promise.all([
+        prisma.groupMember.count({ where: { target_id: t.id, ...period } }),
+        prisma.groupMember.count({ where: { target_id: t.id, left_at: null, ...period } }),
+      ]);
+      return {
+        ...t,
+        // JID nulo = evento de entrada não consegue ser atribuído a este grupo.
+        tracking_ready: t.group_jid != null,
+        joined_total: joined,
+        members: inside,
+      };
+    })
+  );
+
+  // Entradas que chegaram antes do JID ser resolvido ficam sem target.
+  const orphans = await prisma.groupMember.count({
+    where: { workspace_id: req.workspaceId!, target_id: null, ...period },
+  });
+
+  res.json({
+    targets: byTarget,
+    totals: {
+      joined_total: byTarget.reduce((s, t) => s + t.joined_total, 0),
+      members: byTarget.reduce((s, t) => s + t.members, 0),
+      clicks: byTarget.reduce((s, t) => s + t.clicks_count, 0),
+      unattributed_joins: orphans,
+    },
+  });
 });
 
 // Zera o contador de um grupo — usado quando o grupo é esvaziado/trocado.
