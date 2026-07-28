@@ -45,6 +45,27 @@ type GroupRotator = {
   _count?: { clicks: number; targets: number };
 };
 
+// Contagem de entradas por grupo. Só existe se o número for admin do grupo e o
+// group_jid do target já tiver sido resolvido — daí o tracking_ready.
+type GroupMemberStats = {
+  targets: {
+    id: string;
+    name: string;
+    invite_url: string;
+    group_jid: string | null;
+    clicks_count: number;
+    tracking_ready: boolean;
+    joined_total: number;
+    members: number;
+  }[];
+  totals: {
+    joined_total: number;
+    members: number;
+    clicks: number;
+    unattributed_joins: number;
+  };
+};
+
 type GroupClick = {
   id: string;
   fbclid: string | null;
@@ -153,6 +174,14 @@ export function GroupRotators() {
   const [clicksLoading, setClicksLoading] = useState(false);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+
+  const [membersOpen, setMembersOpen] = useState(false);
+  const [membersTitle, setMembersTitle] = useState('');
+  const [membersRotatorId, setMembersRotatorId] = useState('');
+  const [memberStats, setMemberStats] = useState<GroupMemberStats | null>(null);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [resolving, setResolving] = useState(false);
+  const [resolveMsg, setResolveMsg] = useState<string | null>(null);
 
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -300,6 +329,45 @@ export function GroupRotators() {
     }
   };
 
+  const fetchMembers = async (rotatorId: string) => {
+    setMembersLoading(true);
+    try {
+      setMemberStats(await fetcher(`/group-rotators/${rotatorId}/members`));
+    } finally {
+      setMembersLoading(false);
+    }
+  };
+
+  const openMembers = (r: GroupRotator) => {
+    setMembersTitle(r.name);
+    setMembersRotatorId(r.id);
+    setMemberStats(null);
+    setResolveMsg(null);
+    setMembersOpen(true);
+    fetchMembers(r.id);
+  };
+
+  // Preenche o group_jid dos grupos que ainda não têm. Sem ele o evento de
+  // entrada chega mas não sabe a que grupo pertence.
+  const resolveJids = async () => {
+    if (!membersRotatorId) return;
+    setResolving(true);
+    setResolveMsg(null);
+    try {
+      const r = await poster(`/group-rotators/${membersRotatorId}/resolve-jids`, {});
+      setResolveMsg(
+        r.resolved > 0
+          ? `${r.resolved} grupo(s) vinculado(s).`
+          : 'Nenhum grupo novo vinculado. Confira se o número é admin dos grupos.'
+      );
+      await fetchMembers(membersRotatorId);
+    } catch (e: any) {
+      setResolveMsg(e?.message || 'Falha ao vincular os grupos.');
+    } finally {
+      setResolving(false);
+    }
+  };
+
   const openClicks = (r: GroupRotator) => {
     setClicksTitle(r.name);
     setClicksRotatorId(r.id);
@@ -330,6 +398,7 @@ export function GroupRotators() {
               <TableHead>Distribuição</TableHead>
               <TableHead className="text-center">Grupos</TableHead>
               <TableHead className="text-center">Cliques</TableHead>
+              <TableHead className="text-center">Membros</TableHead>
               <TableHead className="text-center">Pixel</TableHead>
               <TableHead className="text-center">Status</TableHead>
               <TableHead className="text-right">Ações</TableHead>
@@ -337,9 +406,9 @@ export function GroupRotators() {
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={8} className="text-center py-12">Carregando...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={9} className="text-center py-12">Carregando...</TableCell></TableRow>
             ) : items.length === 0 ? (
-              <TableRow><TableCell colSpan={8} className="text-center py-12 text-gray-500">Nenhum rotador de grupo cadastrado.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={9} className="text-center py-12 text-gray-500">Nenhum rotador de grupo cadastrado.</TableCell></TableRow>
             ) : items.map((r) => {
               const base = PUBLIC_ORIGIN || (typeof window !== 'undefined' ? window.location.origin : '');
               const directUrl = `${base}/g/${r.short_code}`;
@@ -369,6 +438,12 @@ export function GroupRotators() {
                     <Button size="sm" variant="ghost" className="gap-1 text-gray-600 hover:text-gray-900" onClick={() => openClicks(r)}>
                       <MousePointerClick className="w-3 h-3" />
                       {r._count?.clicks ?? 0}
+                    </Button>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Button size="sm" variant="ghost" className="gap-1 text-gray-600 hover:text-gray-900" onClick={() => openMembers(r)}>
+                      <Users className="w-3 h-3" />
+                      ver
                     </Button>
                   </TableCell>
                   <TableCell className="text-center">
@@ -659,6 +734,92 @@ export function GroupRotators() {
       )}
 
       {/* Clicks drill-down */}
+      {/* Membros por grupo */}
+      <Dialog open={membersOpen} onOpenChange={setMembersOpen}>
+        <DialogContent className="sm:max-w-3xl w-[95vw] max-h-[88vh] overflow-y-auto p-0">
+          <div className="p-6 border-b sticky top-0 bg-white z-10">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Users className="w-4 h-4" /> Membros — {membersTitle}
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="grid grid-cols-4 gap-2 mt-4">
+              {[
+                { label: 'Cliques', value: memberStats?.totals.clicks ?? 0, cls: 'text-gray-900' },
+                { label: 'Entraram', value: memberStats?.totals.joined_total ?? 0, cls: 'text-blue-600' },
+                { label: 'Dentro agora', value: memberStats?.totals.members ?? 0, cls: 'text-green-600' },
+                { label: 'Sem grupo', value: memberStats?.totals.unattributed_joins ?? 0, cls: 'text-amber-600' },
+              ].map((s) => (
+                <div key={s.label} className="rounded-lg border bg-gray-50/50 px-3 py-2">
+                  <p className="text-[11px] uppercase tracking-wide text-gray-400">{s.label}</p>
+                  <p className={`text-xl font-bold ${s.cls}`}>{s.value}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 flex items-center gap-2">
+              <Button size="sm" variant="outline" onClick={resolveJids} disabled={resolving} className="gap-1">
+                <RotateCcw className={`w-3 h-3 ${resolving ? 'animate-spin' : ''}`} />
+                {resolving ? 'Vinculando...' : 'Vincular grupos'}
+              </Button>
+              {resolveMsg && <span className="text-xs text-gray-600">{resolveMsg}</span>}
+            </div>
+          </div>
+
+          <div className="p-6 pt-4">
+            {/* A contagem depende de 3 coisas que falham caladas — avisar aqui evita
+                o usuário achar que o recurso está quebrado. */}
+            <p className="text-xs text-gray-500 mb-3 leading-relaxed">
+              A contagem só funciona se o número conectado for <strong>admin do grupo</strong>,
+              o provider for <strong>Evolution</strong> e o grupo estiver vinculado.
+              Grupos sem vínculo aparecem como "não vinculado" abaixo.
+            </p>
+
+            {membersLoading ? (
+              <p className="text-center py-8 text-gray-500">Carregando...</p>
+            ) : !memberStats || memberStats.targets.length === 0 ? (
+              <p className="text-center py-8 text-gray-500">Nenhum grupo cadastrado.</p>
+            ) : (
+              <Table>
+                <TableHeader className="bg-gray-50/50">
+                  <TableRow>
+                    <TableHead>Grupo</TableHead>
+                    <TableHead className="text-center">Cliques</TableHead>
+                    <TableHead className="text-center">Entraram</TableHead>
+                    <TableHead className="text-center">Dentro agora</TableHead>
+                    <TableHead className="text-center">Rastreio</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {memberStats.targets.map((t) => (
+                    <TableRow key={t.id}>
+                      <TableCell>
+                        <p className="font-medium text-sm">{t.name || 'Sem nome'}</p>
+                        <code className="text-[11px] text-gray-400">{t.invite_url.replace('https://chat.whatsapp.com/', '')}</code>
+                      </TableCell>
+                      <TableCell className="text-center">{t.clicks_count}</TableCell>
+                      <TableCell className="text-center">{t.tracking_ready ? t.joined_total : '—'}</TableCell>
+                      <TableCell className="text-center font-medium">{t.tracking_ready ? t.members : '—'}</TableCell>
+                      <TableCell className="text-center">
+                        <Badge
+                          variant="outline"
+                          className={t.tracking_ready
+                            ? 'bg-green-50 text-green-700 border-green-200'
+                            : 'bg-amber-50 text-amber-700 border-amber-200'}
+                        >
+                          {t.tracking_ready ? 'ativo' : 'não vinculado'}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={clicksOpen} onOpenChange={setClicksOpen}>
         <DialogContent className="sm:max-w-4xl w-[95vw] max-h-[88vh] overflow-y-auto p-0">
           <div className="p-6 border-b sticky top-0 bg-white z-10">
