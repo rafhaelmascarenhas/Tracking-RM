@@ -41,6 +41,9 @@ type GroupRotator = {
   meta_pixel_id?: string | null;
   meta_capi_token?: string | null;
   gtm_id?: string | null;
+  // Número que lê os grupos (resolve convite + recebe evento de entrada).
+  // Não participa do redirecionamento — o clique vai direto pro grupo.
+  connection_id?: string | null;
   targets?: GroupTarget[];
   _count?: { clicks: number; targets: number };
 };
@@ -64,6 +67,15 @@ type GroupMemberStats = {
     clicks: number;
     unattributed_joins: number;
   };
+};
+
+type Connection = {
+  id: string;
+  provider: string;
+  status: string;
+  session_name: string;
+  profile_name: string | null;
+  phone_number: string | null;
 };
 
 type GroupClick = {
@@ -147,6 +159,7 @@ const empty: FormState = {
   meta_pixel_id: '',
   meta_capi_token: '',
   gtm_id: '',
+  connection_id: null,
   form_targets: [emptyTarget()],
 };
 
@@ -178,10 +191,14 @@ export function GroupRotators() {
   const [membersOpen, setMembersOpen] = useState(false);
   const [membersTitle, setMembersTitle] = useState('');
   const [membersRotatorId, setMembersRotatorId] = useState('');
+  const [membersConnectionId, setMembersConnectionId] = useState<string | null>(null);
   const [memberStats, setMemberStats] = useState<GroupMemberStats | null>(null);
   const [membersLoading, setMembersLoading] = useState(false);
   const [resolving, setResolving] = useState(false);
   const [resolveMsg, setResolveMsg] = useState<string | null>(null);
+
+  // Só Evolution: a contagem depende de /group/inviteInfo, que a uazapi não tem.
+  const [evolutionConns, setEvolutionConns] = useState<Connection[]>([]);
 
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -202,6 +219,12 @@ export function GroupRotators() {
       .finally(() => setLoading(false));
   };
   useEffect(load, []);
+
+  useEffect(() => {
+    fetcher('/numbers')
+      .then((all: Connection[]) => setEvolutionConns(all.filter((c) => c.provider === 'EVOLUTION')))
+      .catch(() => setEvolutionConns([]));
+  }, []);
 
   const openNew = () => { setForm({ ...empty, form_targets: [emptyTarget()] }); setOpen(true); };
 
@@ -289,6 +312,7 @@ export function GroupRotators() {
       meta_pixel_id: form.meta_pixel_id || null,
       meta_capi_token: form.meta_capi_token || null,
       gtm_id: form.gtm_id || null,
+      connection_id: form.connection_id || null,
       targets: form.form_targets
         .filter((t) => INVITE_RE.test(t.invite_url.trim()))
         .map((t, i) => ({
@@ -341,6 +365,7 @@ export function GroupRotators() {
   const openMembers = (r: GroupRotator) => {
     setMembersTitle(r.name);
     setMembersRotatorId(r.id);
+    setMembersConnectionId(r.connection_id ?? null);
     setMemberStats(null);
     setResolveMsg(null);
     setMembersOpen(true);
@@ -355,10 +380,13 @@ export function GroupRotators() {
     setResolveMsg(null);
     try {
       const r = await poster(`/group-rotators/${membersRotatorId}/resolve-jids`, {});
+      // "Nada resolveu" com número escolhido só tem uma causa provável: aquele
+      // número não participa dos grupos. As outras causas o backend devolve
+      // como 400 com mensagem própria, e caem no catch.
       setResolveMsg(
         r.resolved > 0
           ? `${r.resolved} grupo(s) vinculado(s).`
-          : 'Nenhum grupo novo vinculado. Confira se o número é admin dos grupos.'
+          : 'Nenhum grupo novo vinculado. O número escolhido precisa ser participante/admin destes grupos.'
       );
       await fetchMembers(membersRotatorId);
     } catch (e: any) {
@@ -519,6 +547,29 @@ export function GroupRotators() {
                   {form.distribution === 'ROUND_ROBIN' && 'Reveza entre os grupos: 1º clique→grupo 1, 2º→grupo 2, volta ao início.'}
                   {form.distribution === 'WEIGHTED' && 'Defina a % de cada grupo. Total deve ser exatamente 100%.'}
                   {form.distribution === 'FALLBACK' && 'Tudo vai pro grupo 1 até ele lotar (limite de cliques). Aí o próximo assume. Use ↑↓ pra ordenar.'}
+                </p>
+              </div>
+
+              <div>
+                <Label>Número que lê os grupos</Label>
+                <select
+                  value={form.connection_id || ''}
+                  onChange={(e) => setForm({ ...form, connection_id: e.target.value || null })}
+                  className="mt-1 w-full h-9 rounded-md border border-gray-200 bg-white px-3 text-sm"
+                >
+                  <option value="">Nenhum — sem contagem de membros</option>
+                  {evolutionConns.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.profile_name || c.session_name}
+                      {c.phone_number ? ` · ${c.phone_number}` : ''}
+                      {c.status !== 'CONNECTED' ? ' (desconectado)' : ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Este número <strong>não</strong> recebe os cliques — o rotador manda direto pro grupo.
+                  Ele só serve pra contar quem entrou, e pra isso precisa ser <strong>admin de todos os grupos</strong>.
+                  {evolutionConns.length === 0 && ' Nenhum número Evolution cadastrado: a contagem exige Evolution, a uazapi não expõe os dados do grupo.'}
                 </p>
               </div>
 
@@ -759,7 +810,7 @@ export function GroupRotators() {
             </div>
 
             <div className="mt-4 flex items-center gap-2">
-              <Button size="sm" variant="outline" onClick={resolveJids} disabled={resolving} className="gap-1">
+              <Button size="sm" variant="outline" onClick={resolveJids} disabled={resolving || !membersConnectionId} className="gap-1">
                 <RotateCcw className={`w-3 h-3 ${resolving ? 'animate-spin' : ''}`} />
                 {resolving ? 'Vinculando...' : 'Vincular grupos'}
               </Button>
@@ -770,11 +821,22 @@ export function GroupRotators() {
           <div className="p-6 pt-4">
             {/* A contagem depende de 3 coisas que falham caladas — avisar aqui evita
                 o usuário achar que o recurso está quebrado. */}
-            <p className="text-xs text-gray-500 mb-3 leading-relaxed">
-              A contagem só funciona se o número conectado for <strong>admin do grupo</strong>,
-              o provider for <strong>Evolution</strong> e o grupo estiver vinculado.
-              Grupos sem vínculo aparecem como "não vinculado" abaixo.
-            </p>
+            {/* Separa "falta escolher número" de "número não é admin": são causas
+                diferentes e antes as duas apareciam com a mesma frase. */}
+            {!membersConnectionId ? (
+              <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <p className="text-xs text-amber-800 leading-relaxed">
+                  Este rotador não tem número escolhido, então não há como contar quem entrou.
+                  Abra <strong>Editar → Geral</strong> e escolha o número que lê os grupos.
+                  Os cliques continuam sendo contados normalmente.
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-gray-500 mb-3 leading-relaxed">
+                A contagem exige que o número escolhido seja <strong>admin de cada grupo</strong>.
+                Grupos onde ele não entrou aparecem como "não vinculado" abaixo.
+              </p>
+            )}
 
             {membersLoading ? (
               <p className="text-center py-8 text-gray-500">Carregando...</p>

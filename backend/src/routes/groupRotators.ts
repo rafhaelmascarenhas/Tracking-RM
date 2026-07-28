@@ -100,6 +100,7 @@ groupRotatorsRouter.post('/', async (req: Request, res: Response) => {
     meta_pixel_id = null,
     meta_capi_token = null,
     gtm_id = null,
+    connection_id = null,
     targets = [],
   } = req.body as { targets?: TargetInput[] } & Record<string, any>;
 
@@ -130,6 +131,7 @@ groupRotatorsRouter.post('/', async (req: Request, res: Response) => {
       meta_pixel_id: meta_pixel_id || null,
       meta_capi_token: meta_capi_token || null,
       gtm_id: gtm_id || null,
+      connection_id: connection_id || null,
       targets: { create: builtTargets },
     },
     include: { targets: true },
@@ -161,6 +163,7 @@ groupRotatorsRouter.put('/:id', async (req: Request, res: Response) => {
     meta_pixel_id,
     meta_capi_token,
     gtm_id,
+    connection_id,
     targets,
   } = req.body as { targets?: TargetInput[] } & Record<string, any>;
 
@@ -226,6 +229,8 @@ groupRotatorsRouter.put('/:id', async (req: Request, res: Response) => {
       meta_capi_token:
         meta_capi_token !== undefined ? meta_capi_token || null : existing.meta_capi_token,
       gtm_id: gtm_id !== undefined ? gtm_id || null : existing.gtm_id,
+      // Diferencia "não mandou o campo" de "mandou vazio pra desvincular".
+      connection_id: connection_id !== undefined ? connection_id || null : existing.connection_id,
     },
     include: { targets: true },
   });
@@ -238,23 +243,41 @@ groupRotatorsRouter.put('/:id', async (req: Request, res: Response) => {
  * Sem JID o evento de entrada chega mas não sabe a que target pertence.
  * Idempotente: só toca nos targets que ainda estão sem JID.
  *
- * Exige uma conexão EVOLUTION conectada no workspace (a uazapi não expõe
- * inviteInfo, então rotador de grupo com contagem de membros pede Evolution).
+ * Exige o número escolhido no rotador: Evolution (a uazapi não expõe inviteInfo)
+ * e conectado. Cada erro possível responde a causa específica, porque "não
+ * resolveu" tem quatro motivos diferentes e o usuário não adivinha qual foi.
  */
 groupRotatorsRouter.post('/:id/resolve-jids', async (req: Request, res: Response) => {
   const rotator = await prisma.groupRotator.findFirst({
     where: { id: req.params.id, workspace_id: req.workspaceId! },
-    select: { id: true },
+    select: { id: true, connection_id: true },
   });
   if (!rotator) return res.status(404).json({ error: 'Not found' });
 
+  // Usa o número escolhido no rotador. Escolher sozinho um número qualquer do
+  // workspace seria um sorteio silencioso: só funciona se aquela instância for
+  // admin dos grupos, e o usuário não teria como corrigir a escolha.
+  if (!rotator.connection_id) {
+    return res.status(400).json({
+      error: 'Escolha um número no rotador (aba Geral) antes de vincular os grupos.',
+    });
+  }
+
   const conn = await prisma.whatsappConnection.findFirst({
-    where: { workspace_id: req.workspaceId!, provider: 'EVOLUTION', status: 'CONNECTED' },
-    select: { session_name: true },
+    where: { id: rotator.connection_id, workspace_id: req.workspaceId! },
+    select: { session_name: true, provider: true, status: true, phone_number: true },
   });
   if (!conn) {
+    return res.status(400).json({ error: 'O número do rotador não existe mais. Escolha outro.' });
+  }
+  if (conn.provider !== 'EVOLUTION') {
     return res.status(400).json({
-      error: 'Nenhum número Evolution conectado. A resolução do grupo depende de um.',
+      error: 'A contagem de membros só funciona com número Evolution. A uazapi não expõe os dados do grupo.',
+    });
+  }
+  if (conn.status !== 'CONNECTED') {
+    return res.status(400).json({
+      error: `O número ${conn.phone_number || conn.session_name} está desconectado. Reconecte antes de vincular.`,
     });
   }
 

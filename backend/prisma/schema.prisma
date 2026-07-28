@@ -57,6 +57,7 @@ model WhatsappConnection {
 
   workspace      Workspace       @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
   rotatorTargets RotatorTarget[]
+  groupRotators  GroupRotator[]
   leads          Lead[]
 
   @@map("whatsapp_connections")
@@ -311,6 +312,10 @@ model GroupRotator {
   utm_content  String?
   rr_counter   Int     @default(0)
   active       Boolean @default(true)
+  // Número usado pra ler os grupos (resolver o convite e receber o evento de
+  // entrada). Precisa ser Evolution e admin dos grupos. Nulo = rotador só
+  // redireciona, sem contagem de membros — que é como todo rotador antigo nasceu.
+  connection_id String?
   // Landing page (Meta ads)
   use_landing      Boolean @default(false)
   landing_logo     String?
@@ -323,9 +328,10 @@ model GroupRotator {
   gtm_id          String?
   created_at      DateTime @default(now())
 
-  workspace Workspace     @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-  targets   GroupTarget[]
-  clicks    GroupClick[]
+  workspace  Workspace           @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  connection WhatsappConnection? @relation(fields: [connection_id], references: [id], onDelete: SetNull)
+  targets    GroupTarget[]
+  clicks     GroupClick[]
 
   @@map("group_rotators")
 }
