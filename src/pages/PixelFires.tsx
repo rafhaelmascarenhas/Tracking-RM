@@ -18,6 +18,9 @@ type Fire = {
   fired_at: string;
   lead?: { name?: string | null; phone_number: string } | null;
   stage?: { name: string } | null;
+  // Número que atendia o lead no momento do disparo — congelado, não muda se o
+  // lead passar pra outro vendedor depois.
+  connection?: { profile_name: string | null; phone_number: string | null; session_name: string } | null;
 };
 
 type FiresResponse = {
@@ -182,6 +185,7 @@ export function PixelFires() {
             <TableRow>
               <TableHead>Data de Disparo</TableHead>
               <TableHead>Conversa</TableHead>
+              <TableHead>Número</TableHead>
               <TableHead>Retorno</TableHead>
               <TableHead>Etapa da Jornada</TableHead>
               <TableHead>Evento</TableHead>
@@ -191,15 +195,31 @@ export function PixelFires() {
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-12">Carregando...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center py-12">Carregando...</TableCell></TableRow>
             ) : items.length === 0 ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-12 text-gray-500">{hasFilter ? 'Nenhum disparo no filtro selecionado.' : 'Nenhum disparo realizado ainda.'}</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center py-12 text-gray-500">{hasFilter ? 'Nenhum disparo no filtro selecionado.' : 'Nenhum disparo realizado ainda.'}</TableCell></TableRow>
             ) : items.map((f) => (
               <TableRow key={f.id}>
                 <TableCell className="whitespace-nowrap">{new Date(f.fired_at).toLocaleString('pt-BR')}</TableCell>
                 <TableCell>
                   <div className="font-medium">{f.lead?.name || '-'}</div>
                   <div className="text-xs text-gray-400">{f.lead?.phone_number}</div>
+                </TableCell>
+                <TableCell>
+                  {f.connection ? (
+                    <>
+                      <div className="font-medium text-sm">
+                        {f.connection.profile_name || f.connection.session_name}
+                      </div>
+                      {f.connection.phone_number && (
+                        <div className="text-xs text-gray-400">{f.connection.phone_number}</div>
+                      )}
+                    </>
+                  ) : (
+                    // Disparo anterior ao campo existir. Mostrar o dono ATUAL do
+                    // lead aqui seria um chute retroativo com cara de fato.
+                    <span className="text-xs text-gray-300" title="Disparo anterior ao registro do número">—</span>
+                  )}
                 </TableCell>
                 <TableCell>
                   {f.status === 'success' ? (

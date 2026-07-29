@@ -66,6 +66,9 @@ async function processCapiJob(data: CapiJobData) {
       currency: data.currency ?? null,
       status,
       response,
+      // Congela o número que atendia AGORA. Ler isso do lead na hora de exibir
+      // mostraria o dono atual, não quem fez a venda.
+      whatsapp_connection_id: lead.whatsapp_connection_id,
     },
   }).catch((e) => console.error('[pixelFire log]', e?.message));
 }

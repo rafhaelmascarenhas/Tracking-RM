@@ -59,6 +59,7 @@ model WhatsappConnection {
   rotatorTargets RotatorTarget[]
   groupRotators  GroupRotator[]
   leads          Lead[]
+  pixelFires     PixelFire[]
 
   @@map("whatsapp_connections")
 }
@@ -143,6 +144,13 @@ model PixelFire {
   status           String   // success | error
   response         String?  // fbtrace_id / corpo do erro da Meta (truncado)
   fired_at         DateTime @default(now())
+  // Número que atendia o lead NO MOMENTO do disparo. Congelado de propósito:
+  // o lead pode trocar de dono depois (volta meses depois e fala com outro
+  // vendedor), e a venda tem que continuar creditada a quem a fez.
+  // Nulo = disparo anterior a este campo existir.
+  whatsapp_connection_id String?
+
+  connection WhatsappConnection? @relation(fields: [whatsapp_connection_id], references: [id], onDelete: SetNull)
 
   @@index([workspace_id, fired_at])
   @@map("pixel_fires")

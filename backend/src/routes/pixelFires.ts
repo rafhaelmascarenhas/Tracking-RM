@@ -56,18 +56,25 @@ pixelFiresRouter.get('/', async (req: Request, res: Response) => {
 
   const leadIds = [...new Set(fires.map((f) => f.lead_id))];
   const stageIds = [...new Set(fires.map((f) => f.journey_stage_id).filter(Boolean) as string[])];
-  const [leads, stages] = await Promise.all([
+  const connIds = [...new Set(fires.map((f) => f.whatsapp_connection_id).filter(Boolean) as string[])];
+  const [leads, stages, conns] = await Promise.all([
     prisma.lead.findMany({ where: { id: { in: leadIds } }, select: { id: true, name: true, phone_number: true } }),
     prisma.journeyStage.findMany({ where: { id: { in: stageIds } }, select: { id: true, name: true } }),
+    prisma.whatsappConnection.findMany({
+      where: { id: { in: connIds } },
+      select: { id: true, profile_name: true, phone_number: true, session_name: true },
+    }),
   ]);
   const leadMap = new Map(leads.map((l) => [l.id, l]));
   const stageMap = new Map(stages.map((s) => [s.id, s]));
+  const connMap = new Map(conns.map((c) => [c.id, c]));
 
   res.json({
     items: fires.map((f) => ({
       ...f,
       lead: leadMap.get(f.lead_id) ?? null,
       stage: f.journey_stage_id ? stageMap.get(f.journey_stage_id) ?? null : null,
+      connection: f.whatsapp_connection_id ? connMap.get(f.whatsapp_connection_id) ?? null : null,
     })),
     page,
     pageSize: PAGE_SIZE,
@@ -85,14 +92,23 @@ pixelFiresRouter.get('/export', async (req: Request, res: Response) => {
   const leads = await prisma.lead.findMany({ where: { id: { in: leadIds } }, select: { id: true, name: true, phone_number: true } });
   const leadMap = new Map(leads.map((l) => [l.id, l]));
 
+  const connIds = [...new Set(fires.map((f) => f.whatsapp_connection_id).filter(Boolean) as string[])];
+  const conns = await prisma.whatsappConnection.findMany({
+    where: { id: { in: connIds } },
+    select: { id: true, profile_name: true, phone_number: true, session_name: true },
+  });
+  const connMap = new Map(conns.map((c) => [c.id, c]));
+
   const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const header = ['data', 'nome', 'telefone', 'evento', 'plataforma', 'action_source', 'valor', 'moeda', 'status', 'resposta'];
+  const header = ['data', 'nome', 'telefone', 'numero_vendedor', 'evento', 'plataforma', 'action_source', 'valor', 'moeda', 'status', 'resposta'];
   const rows = fires.map((f) => {
     const l = leadMap.get(f.lead_id);
+    const c = f.whatsapp_connection_id ? connMap.get(f.whatsapp_connection_id) : null;
     return [
       new Date(f.fired_at).toISOString(),
       l?.name ?? '',
       l?.phone_number ?? '',
+      c ? c.profile_name || c.phone_number || c.session_name : '',
       f.event_name,
       f.platform,
       f.action_source ?? '',
