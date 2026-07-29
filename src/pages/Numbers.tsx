@@ -32,9 +32,30 @@ function QrDialog({ conn, onClose, onConnected }: { conn: Conn; onClose: () => v
   const [status, setStatus] = useState(conn.status);
   const [error, setError] = useState<string | null>(null);
   const [reiniting, setReiniting] = useState(false);
+  // Sem isso o botão "Gerar novo QR" não dava sinal nenhum: o QR antigo
+  // continuava na tela durante a chamada e o novo aparecia igual ao anterior.
+  const [loadingQr, setLoadingQr] = useState(false);
+  const [qrAt, setQrAt] = useState<number | null>(null);
+  const [now, setNow] = useState(Date.now());
+  // Falha de rede no polling era engolida pra sempre: a tela ficava em
+  // "Aguardando leitura..." mesmo com o provider fora do ar.
+  const [pollFails, setPollFails] = useState(0);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // QR do WhatsApp expira perto de 60s. Sem contagem, o usuário escaneia um
+  // código morto e nada explica por que não conectou.
+  const QR_TTL_S = 60;
+  const qrAgeS = qrAt ? Math.floor((now - qrAt) / 1000) : 0;
+  const qrLeftS = Math.max(0, QR_TTL_S - qrAgeS);
+  const qrExpired = qrAt != null && qrLeftS === 0;
+
   const stop = () => { if (timer.current) clearInterval(timer.current); timer.current = null; };
+
+  // Relógio de 1s só pra contagem do QR; independente do polling de status.
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
 
   const reinitAndRetry = async () => {
     setReiniting(true);
@@ -51,11 +72,19 @@ function QrDialog({ conn, onClose, onConnected }: { conn: Conn; onClose: () => v
   };
 
   const start = async () => {
+    // Para o polling ANTES de pedir QR novo: o poll antigo continuava rodando
+    // durante a chamada e podia sobrescrever o QR novo por um já vencido.
+    stop();
     setError(null);
+    setPollFails(0);
+    setLoadingQr(true);
+    setQrcode(null);
+    setQrAt(null);
     try {
       const s = await poster(`/numbers/${conn.id}/connect`);
       setQrcode(s.qrcode);
       setStatus(s.status);
+      if (s.qrcode) setQrAt(Date.now());
       if (s.status === 'CONNECTED') { onConnected(); return; }
     } catch (e: any) {
       const msg: string = e.message || 'Falha ao iniciar conexão';
@@ -66,15 +95,35 @@ function QrDialog({ conn, onClose, onConnected }: { conn: Conn; onClose: () => v
         setError(msg);
       }
       return;
+    } finally {
+      setLoadingQr(false);
     }
-    stop();
+
     timer.current = setInterval(async () => {
       try {
         const s = await fetcher(`/numbers/${conn.id}/status`);
-        if (s.qrcode) setQrcode(s.qrcode);
+        setPollFails(0);
+        // Só troca o QR se veio um diferente — reatribuir o mesmo data URL
+        // remonta a <img> e faz a imagem piscar a cada 2,5s.
+        if (s.qrcode) {
+          setQrcode((prev) => {
+            if (prev !== s.qrcode) setQrAt(Date.now());
+            return s.qrcode;
+          });
+        }
         setStatus(s.status);
         if (s.status === 'CONNECTED') { stop(); onConnected(); }
-      } catch { /* mantém tentando */ }
+      } catch {
+        // Uma falha isolada é normal (provider oscila). Persistente não é:
+        // avisa em vez de girar pra sempre.
+        setPollFails((n) => {
+          if (n + 1 >= 3) {
+            stop();
+            setError('Perdi contato com o servidor enquanto aguardava a leitura. O número pode ter conectado mesmo assim — feche e confira a lista.');
+          }
+          return n + 1;
+        });
+      }
     }, 2500);
   };
 
@@ -108,13 +157,56 @@ function QrDialog({ conn, onClose, onConnected }: { conn: Conn; onClose: () => v
               <CheckCircle2 className="h-16 w-16 text-emerald-500 mx-auto" />
               <p className="font-medium">Conectado!</p>
             </div>
+          ) : loadingQr ? (
+            <div className="flex flex-col items-center gap-2 text-muted-foreground">
+              <Loader2 className="h-8 w-8 animate-spin" /> Gerando QR code...
+            </div>
           ) : qrcode ? (
             <>
-              <img src={qrcode} alt="QR Code" className="h-60 w-60 rounded-lg border" />
-              <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1">
-                <Loader2 className="h-3 w-3 animate-spin" /> Aguardando leitura...
-              </p>
-              <Button variant="outline" size="sm" className="mt-2" onClick={start}>Gerar novo QR</Button>
+              <div className="relative">
+                <img
+                  src={qrcode}
+                  alt="QR Code"
+                  className={`h-60 w-60 rounded-lg border transition-opacity ${qrExpired ? 'opacity-20' : ''}`}
+                />
+                {qrExpired && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="rounded-md bg-white/95 px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm">
+                      QR expirado
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {qrExpired ? (
+                <p className="mt-3 text-xs text-amber-600">
+                  Este código venceu. Gere um novo para escanear.
+                </p>
+              ) : (
+                <p className="mt-3 flex items-center gap-1 text-xs text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Aguardando leitura... expira em {qrLeftS}s
+                </p>
+              )}
+
+              <Button
+                variant={qrExpired ? 'default' : 'outline'}
+                size="sm"
+                className="mt-2"
+                onClick={start}
+                disabled={loadingQr}
+              >
+                <RefreshCw className="mr-2 h-3 w-3" />
+                Gerar novo QR
+              </Button>
+
+              {/* Prova de que o QR na tela é o novo: sem isso dois códigos
+                  parecidos são indistinguíveis a olho. */}
+              {qrAt && (
+                <p className="mt-1 text-[11px] text-gray-400">
+                  Gerado às {new Date(qrAt).toLocaleTimeString('pt-BR')}
+                </p>
+              )}
             </>
           ) : (
             <div className="flex flex-col items-center gap-2 text-muted-foreground">

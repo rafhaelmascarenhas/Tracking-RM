@@ -264,6 +264,20 @@ numbersRouter.get('/:id/status', async (req: Request, res: Response) => {
     if (conn.provider === 'MANUAL') return res.json({ status: conn.status, qrcode: null });
     if (conn.provider !== 'EVOLUTION' && !conn.uazapi_token) return res.json({ status: conn.status, qrcode: null });
 
+    // O webhook de connection.update já grava CONNECTED assim que o QR é lido,
+    // e costuma chegar antes do próximo poll. Responder do banco nesse caso
+    // evita 2 chamadas ao provider justamente no instante em que o usuário está
+    // olhando a tela esperando resposta.
+    if (conn.status === 'CONNECTED') {
+      return res.json({
+        status: 'CONNECTED',
+        qrcode: null,
+        phone: conn.phone_number,
+        profileName: conn.profile_name,
+        from_cache: true,
+      });
+    }
+
     const s = await providerStatus(req.workspaceId!, conn);
     await syncConn(conn.id, s);
     res.json(s);
