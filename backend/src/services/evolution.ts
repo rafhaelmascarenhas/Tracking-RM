@@ -202,7 +202,7 @@ export async function fetchAllGroups(
   cfg: EvolutionConfig,
   name: string,
   ownerPhone: string | null,
-  opts: { force?: boolean } = {}
+  opts: { force?: boolean; timeoutMs?: number } = {}
 ): Promise<EvolutionGroup[]> {
   const hit = groupsCache.get(name);
   if (!opts.force && hit && Date.now() - hit.at < GROUPS_TTL_MS) return hit.groups;
@@ -219,9 +219,10 @@ export async function fetchAllGroups(
     cfg,
     'GET',
     `/group/fetchAllGroups/${encodeURIComponent(name)}?getParticipants=true`,
-    // Bem acima do padrão: esta chamada é lenta por natureza. Ainda assim
-    // limitada, pra falhar com mensagem em vez de pendurar a tela.
-    { timeoutMs: 90_000 }
+    // Lenta por natureza. Quem chama de dentro de uma requisição usa o padrão
+    // curto; o job em segundo plano manda um timeout longo, porque lá ninguém
+    // está esperando na linha.
+    { timeoutMs: opts.timeoutMs ?? 90_000 }
   );
   if (!Array.isArray(data)) return [];
 

@@ -223,6 +223,7 @@ export function GroupRotators() {
   const [importing, setImporting] = useState(false);
   const [adminCount, setAdminCount] = useState(0);
   const [unknownCount, setUnknownCount] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
 
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -306,23 +307,54 @@ export function GroupRotators() {
     setForm({ ...form, form_targets: arr });
   };
 
-  const openPicker = async () => {
-    if (!form.connection_id) return;
-    setPickerOpen(true);
+  /**
+   * A busca roda no servidor em segundo plano e a tela pergunta até ficar
+   * pronta. Conta grande passa de 90s, e uma requisição síncrona nesse caso só
+   * conseguia devolver 504.
+   */
+  const pollGroups = async (connectionId: string, refresh = false) => {
     setPicking(true);
     setPickerError(null);
-    setAvailable([]);
-    setChosen(new Set());
+    setElapsed(0);
+
+    const t0 = Date.now();
+    const tick = setInterval(() => setElapsed(Math.floor((Date.now() - t0) / 1000)), 1000);
+
     try {
-      const r = await fetcher(`/group-rotators/available-groups?connection_id=${form.connection_id}`);
-      setAvailable(r.groups);
-      setAdminCount(r.admin_count ?? 0);
-      setUnknownCount(r.unknown_count ?? 0);
+      // Até 6 min: o servidor desiste antes disso, então quem para primeiro é ele.
+      for (let i = 0; i < 120; i++) {
+        const q = refresh && i === 0 ? '&refresh=1' : '';
+        const r = await fetcher(`/group-rotators/available-groups?connection_id=${connectionId}${q}`);
+
+        if (r.status === 'ready') {
+          setAvailable(r.groups);
+          setAdminCount(r.admin_count ?? 0);
+          setUnknownCount(r.unknown_count ?? 0);
+          return;
+        }
+        if (r.status === 'error') {
+          setPickerError(r.error || 'Não consegui listar os grupos.');
+          return;
+        }
+        await new Promise((res) => setTimeout(res, 3000));
+      }
+      setPickerError('A busca passou de 6 minutos. Tente novamente mais tarde.');
     } catch (e: any) {
       setPickerError(e.message || 'Não consegui listar os grupos.');
     } finally {
+      clearInterval(tick);
       setPicking(false);
     }
+  };
+
+  const openPicker = () => {
+    if (!form.connection_id) return;
+    setPickerOpen(true);
+    setAvailable([]);
+    setChosen(new Set());
+    setAdminCount(0);
+    setUnknownCount(0);
+    pollGroups(form.connection_id);
   };
 
   /**
@@ -936,9 +968,16 @@ export function GroupRotators() {
             )}
 
             {picking ? (
-              <p className="py-8 text-center text-sm text-gray-500">
-                Buscando grupos... isso pode levar até um minuto em contas com muitos grupos.
-              </p>
+              <div className="py-8 text-center">
+                <p className="text-sm text-gray-600">Buscando grupos... {elapsed}s</p>
+                {/* Conta grande leva minutos. Dizer isso evita a impressão de
+                    tela travada — e o usuário pode ir fazer outra coisa. */}
+                <p className="mt-1 text-xs text-gray-400">
+                  {elapsed < 20
+                    ? 'Consultando o WhatsApp.'
+                    : 'Conta com muitas conversas demora mais. Pode levar alguns minutos.'}
+                </p>
+              </div>
             ) : available.length === 0 && !pickerError ? (
               <p className="py-8 text-center text-sm text-gray-500">
                 Este número não está em nenhum grupo.
@@ -993,11 +1032,22 @@ export function GroupRotators() {
             )}
           </div>
 
-          <DialogFooter className="shrink-0">
-            <Button variant="outline" onClick={() => setPickerOpen(false)}>Cancelar</Button>
-            <Button onClick={importChosen} disabled={chosen.size === 0 || importing}>
-              {importing ? 'Buscando links...' : `Adicionar ${chosen.size || ''}`.trim()}
+          <DialogFooter className="shrink-0 sm:justify-between">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1"
+              disabled={picking || importing}
+              onClick={() => form.connection_id && pollGroups(form.connection_id, true)}
+            >
+              <RotateCcw className="h-3 w-3" /> Buscar de novo
             </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setPickerOpen(false)}>Cancelar</Button>
+              <Button onClick={importChosen} disabled={chosen.size === 0 || importing}>
+                {importing ? 'Buscando links...' : `Adicionar ${chosen.size || ''}`.trim()}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

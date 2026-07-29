@@ -3,12 +3,12 @@ import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
 import { normalizeInviteUrl } from '../services/groupRotatorService';
 import {
-  fetchAllGroups,
   fetchGroupInviteUrl,
   fetchGroupJidByInvite,
   fetchInstancePhone,
   getWorkspaceEvolution,
 } from '../services/evolution';
+import { clearGroupJob, getGroupJob, startGroupJob } from '../services/groupListService';
 
 export const groupRotatorsRouter = Router();
 
@@ -95,17 +95,32 @@ groupRotatorsRouter.get('/available-groups', async (req: Request, res: Response)
       }
     }
 
-    const groups = await fetchAllGroups(cfg, conn.session_name, phone, {
-      force: req.query.refresh === '1',
-    });
+    if (req.query.refresh === '1') clearGroupJob(conn.session_name);
+
+    let job = getGroupJob(conn.session_name);
+    if (!job) job = startGroupJob(cfg, conn.session_name, phone);
+
+    if (job.state === 'loading') {
+      return res.json({
+        status: 'loading',
+        elapsed_ms: Date.now() - job.startedAt,
+        phone_number: phone,
+      });
+    }
+    if (job.state === 'error') {
+      return res.json({ status: 'error', error: job.error, phone_number: phone });
+    }
+
     // Admin primeiro, indeterminado depois, e não-admin por último; dentro de
     // cada faixa, os maiores primeiro.
     const rank = (g: { is_admin: boolean | null }) => (g.is_admin === true ? 0 : g.is_admin === null ? 1 : 2);
-    groups.sort((a, b) => rank(a) - rank(b) || b.size - a.size);
+    const groups = [...job.groups].sort((a, b) => rank(a) - rank(b) || b.size - a.size);
 
     res.json({
+      status: 'ready',
       groups,
       phone_number: phone,
+      took_ms: job.finishedAt - job.startedAt,
       // Zero admin é um resultado comum e confuso: sem isso a tela vira uma
       // lista inteira desabilitada sem explicação no topo.
       admin_count: groups.filter((g) => g.is_admin === true).length,
