@@ -22,6 +22,7 @@ type GroupTarget = {
   active: boolean;
   max_clicks: number | null;
   clicks_count: number;
+  group_jid?: string | null;
 };
 
 type GroupRotator = {
@@ -139,6 +140,17 @@ type TargetEntry = {
   weight: number;
   max_clicks: number | null;
   clicks_count?: number;
+  // Preenchido quando o grupo veio da lista do número — dispensa o
+  // "Vincular grupos" depois de salvar.
+  group_jid?: string | null;
+};
+
+// Grupo em que o número está, vindo do Evolution.
+type AvailableGroup = {
+  jid: string;
+  name: string;
+  size: number;
+  is_admin: boolean;
 };
 
 type FormState = Partial<GroupRotator> & { form_targets: TargetEntry[] };
@@ -200,6 +212,14 @@ export function GroupRotators() {
   // Só Evolution: a contagem depende de /group/inviteInfo, que a uazapi não tem.
   const [evolutionConns, setEvolutionConns] = useState<Connection[]>([]);
 
+  // Seleção de grupos a partir do número, em vez de colar link do celular.
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [available, setAvailable] = useState<AvailableGroup[]>([]);
+  const [picking, setPicking] = useState(false);
+  const [pickerError, setPickerError] = useState<string | null>(null);
+  const [chosen, setChosen] = useState<Set<string>>(new Set());
+  const [importing, setImporting] = useState(false);
+
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
 
@@ -239,6 +259,7 @@ export function GroupRotators() {
         weight: t.weight,
         max_clicks: t.max_clicks,
         clicks_count: t.clicks_count,
+        group_jid: t.group_jid,
       }));
     setForm({ ...full, form_targets: form_targets.length ? form_targets : [emptyTarget()] });
     setOpen(true);
@@ -281,6 +302,75 @@ export function GroupRotators() {
     setForm({ ...form, form_targets: arr });
   };
 
+  const openPicker = async () => {
+    if (!form.connection_id) return;
+    setPickerOpen(true);
+    setPicking(true);
+    setPickerError(null);
+    setAvailable([]);
+    setChosen(new Set());
+    try {
+      const r = await fetcher(`/group-rotators/available-groups?connection_id=${form.connection_id}`);
+      setAvailable(r.groups);
+    } catch (e: any) {
+      setPickerError(e.message || 'Não consegui listar os grupos.');
+    } finally {
+      setPicking(false);
+    }
+  };
+
+  /**
+   * Traz os grupos marcados pro formulário. O link de convite é buscado por
+   * grupo (uma chamada cada) porque o Evolution não devolve isso na listagem.
+   * Grupo cujo link o WhatsApp recusar é reportado em vez de entrar mudo com
+   * o campo vazio.
+   */
+  const importChosen = async () => {
+    if (!form.connection_id || chosen.size === 0) return;
+    setImporting(true);
+    setPickerError(null);
+    const novos: TargetEntry[] = [];
+    const falhas: string[] = [];
+
+    for (const jid of chosen) {
+      const g = available.find((x) => x.jid === jid);
+      try {
+        const r = await poster('/group-rotators/group-invite', {
+          connection_id: form.connection_id,
+          group_jid: jid,
+        });
+        novos.push({
+          name: g?.name || '',
+          invite_url: r.invite_url,
+          weight: 1,
+          max_clicks: 1000,
+          group_jid: jid,
+        });
+      } catch {
+        falhas.push(g?.name || jid);
+      }
+    }
+
+    setForm((f) => {
+      // Não duplica grupo que já está na lista.
+      const jaTem = new Set(f.form_targets.map((t) => t.group_jid).filter(Boolean));
+      const semVazios = f.form_targets.filter((t) => t.invite_url.trim() !== '');
+      const merged = [...semVazios, ...novos.filter((n) => !jaTem.has(n.group_jid))];
+      const ordered = merged.map((t, i) => ({ ...t, priority: i }));
+      return {
+        ...f,
+        form_targets: f.distribution === 'WEIGHTED' ? redistributeEqual(ordered) : ordered,
+      };
+    });
+
+    setImporting(false);
+    if (falhas.length) {
+      setPickerError(`Sem link de convite para: ${falhas.join(', ')}. O número precisa ser admin do grupo.`);
+    } else {
+      setPickerOpen(false);
+    }
+  };
+
   const resetCounter = async (targetId: string) => {
     if (!form.id) return;
     if (!confirm('Zerar o contador de cliques deste grupo? Ele volta ao pool.')) return;
@@ -321,6 +411,7 @@ export function GroupRotators() {
           weight: t.weight,
           priority: i,
           max_clicks: t.max_clicks,
+          group_jid: t.group_jid ?? null,
         })),
     };
     if (form.id) await putter(`/group-rotators/${form.id}`, payload);
@@ -583,9 +674,26 @@ export function GroupRotators() {
 
             {/* TAB 2 — Grupos */}
             <TabsContent value="grupos" className="flex-1 overflow-y-auto space-y-3 pr-1">
+              {/* Escolher da lista evita a ida ao celular pra copiar link por
+                  link, e já traz o group_jid — sem ele a contagem de membros
+                  exige um passo extra depois de salvar. */}
+              {form.connection_id ? (
+                <Button type="button" variant="outline" className="w-full gap-2" onClick={openPicker}>
+                  <Users className="w-4 h-4" />
+                  Escolher grupos do número
+                </Button>
+              ) : (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-xs text-amber-800">
+                    Escolha um número na aba <strong>Geral</strong> para listar os grupos dele aqui.
+                    Sem isso, só colando o link do convite na mão.
+                  </p>
+                </div>
+              )}
+
               <div className="border rounded-lg p-3 bg-blue-50 border-blue-200">
                 <p className="text-xs text-blue-700">
-                  Cole o link do convite (<code>chat.whatsapp.com/XXXX</code>). Um grupo só já funciona.
+                  Ou cole o link do convite (<code>chat.whatsapp.com/XXXX</code>). Um grupo só já funciona.
                   O <strong>limite de cliques</strong> tira o grupo do rodízio quando ele lota — deixe vazio pra não limitar.
                 </p>
               </div>
@@ -621,6 +729,11 @@ export function GroupRotators() {
                       className={`h-8 text-sm font-mono ${invalid ? 'border-red-400' : ''}`}
                     />
                     {invalid && <p className="text-xs text-red-500">Link de convite inválido.</p>}
+                    {t.group_jid && (
+                      <p className="text-[11px] text-green-700">
+                        ✓ Grupo vinculado — contagem de membros já ativa ao salvar
+                      </p>
+                    )}
 
                     <div className="flex items-end gap-3">
                       {form.distribution === 'WEIGHTED' && (
@@ -785,6 +898,78 @@ export function GroupRotators() {
       )}
 
       {/* Clicks drill-down */}
+      {/* Escolher grupos do número */}
+      <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col">
+          <DialogHeader className="shrink-0">
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="w-4 h-4" /> Grupos do número
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto -mx-1 px-1">
+            {picking ? (
+              <p className="py-8 text-center text-sm text-gray-500">Buscando grupos...</p>
+            ) : available.length === 0 && !pickerError ? (
+              <p className="py-8 text-center text-sm text-gray-500">
+                Este número não está em nenhum grupo.
+              </p>
+            ) : (
+              <div className="space-y-1">
+                {available.map((g) => {
+                  const marcado = chosen.has(g.jid);
+                  return (
+                    <label
+                      key={g.jid}
+                      className={`flex items-center gap-3 rounded-lg border p-2.5 ${
+                        g.is_admin
+                          ? 'cursor-pointer hover:bg-gray-50'
+                          : 'cursor-not-allowed border-gray-100 bg-gray-50/60'
+                      } ${marcado ? 'border-blue-300 bg-blue-50/60' : ''}`}
+                    >
+                      <Checkbox
+                        checked={marcado}
+                        disabled={!g.is_admin}
+                        onCheckedChange={(v) =>
+                          setChosen((prev) => {
+                            const next = new Set(prev);
+                            if (v) next.add(g.jid);
+                            else next.delete(g.jid);
+                            return next;
+                          })
+                        }
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className={`block truncate text-sm ${g.is_admin ? 'text-gray-800' : 'text-gray-400'}`}>
+                          {g.name}
+                        </span>
+                        <span className="block text-[11px] text-gray-400">
+                          {g.size} participante{g.size === 1 ? '' : 's'}
+                          {/* Diz POR QUE não dá pra escolher, senão o usuário
+                              acha que o grupo sumiu ou que a tela travou. */}
+                          {!g.is_admin && ' · o número não é admin deste grupo'}
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+
+            {pickerError && (
+              <p className="mt-3 rounded-lg bg-red-50 p-2.5 text-xs text-red-700">{pickerError}</p>
+            )}
+          </div>
+
+          <DialogFooter className="shrink-0">
+            <Button variant="outline" onClick={() => setPickerOpen(false)}>Cancelar</Button>
+            <Button onClick={importChosen} disabled={chosen.size === 0 || importing}>
+              {importing ? 'Buscando links...' : `Adicionar ${chosen.size || ''}`.trim()}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Membros por grupo */}
       <Dialog open={membersOpen} onOpenChange={setMembersOpen}>
         <DialogContent className="sm:max-w-3xl w-[95vw] max-h-[88vh] overflow-y-auto p-0">

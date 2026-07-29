@@ -2,7 +2,12 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
 import { normalizeInviteUrl } from '../services/groupRotatorService';
-import { fetchGroupJidByInvite, getWorkspaceEvolution } from '../services/evolution';
+import {
+  fetchAllGroups,
+  fetchGroupInviteUrl,
+  fetchGroupJidByInvite,
+  getWorkspaceEvolution,
+} from '../services/evolution';
 
 export const groupRotatorsRouter = Router();
 
@@ -13,15 +18,26 @@ type TargetInput = {
   priority?: number;
   active?: boolean;
   max_clicks?: number | null;
+  // Vem preenchido quando o grupo foi escolhido pela lista do número, e aí a
+  // contagem de membros já funciona sem passar pelo "Vincular grupos".
+  group_jid?: string | null;
 };
 
 // Aceita link completo, sem https ou só o código do convite. Descarta inválidos.
 function buildTargets(targets: TargetInput[]) {
   if (!Array.isArray(targets)) return [];
+  // group_jid é unique: o mesmo grupo entrando duas vezes derrubaria o
+  // createMany inteiro. Fica só a primeira ocorrência.
+  const seenJids = new Set<string>();
   return targets
     .map((t, i) => {
       const invite_url = normalizeInviteUrl(t.invite_url);
       if (!invite_url) return null;
+      let group_jid = t.group_jid || null;
+      if (group_jid) {
+        if (seenJids.has(group_jid)) group_jid = null;
+        else seenJids.add(group_jid);
+      }
       return {
         name: t.name || '',
         invite_url,
@@ -29,10 +45,78 @@ function buildTargets(targets: TargetInput[]) {
         priority: t.priority ?? i,
         active: t.active !== false,
         max_clicks: t.max_clicks == null ? null : Math.max(1, Number(t.max_clicks)),
+        group_jid,
       };
     })
     .filter((t): t is NonNullable<typeof t> => t !== null);
 }
+
+// ATENÇÃO: rotas de caminho fixo têm que vir ANTES de '/:id', senão o Express
+// casa '/available-groups' como se 'available-groups' fosse um id e responde 404.
+
+/**
+ * Lista os grupos do número escolhido, pra montar o rotador escolhendo de uma
+ * lista em vez de colar link por link copiado do celular.
+ *
+ * Grupos onde o número não é admin vêm marcados, não escondidos: o usuário
+ * precisa entender POR QUE aquele grupo não serve, senão fica procurando um
+ * grupo que "sumiu" da lista.
+ */
+groupRotatorsRouter.get('/available-groups', async (req: Request, res: Response) => {
+  const connectionId = String(req.query.connection_id || '');
+  if (!connectionId) return res.status(400).json({ error: 'connection_id é obrigatório' });
+
+  const conn = await prisma.whatsappConnection.findFirst({
+    where: { id: connectionId, workspace_id: req.workspaceId! },
+    select: { session_name: true, provider: true, status: true, phone_number: true },
+  });
+  if (!conn) return res.status(404).json({ error: 'Número não encontrado' });
+  if (conn.provider !== 'EVOLUTION') {
+    return res.status(400).json({ error: 'Listar grupos só funciona com número Evolution.' });
+  }
+  if (conn.status !== 'CONNECTED') {
+    return res.status(400).json({ error: 'Número desconectado. Reconecte para listar os grupos.' });
+  }
+
+  try {
+    const cfg = await getWorkspaceEvolution(req.workspaceId!);
+    const groups = await fetchAllGroups(cfg, conn.session_name, conn.phone_number);
+    // Admin primeiro, depois maiores: os utilizáveis ficam no topo.
+    groups.sort((a, b) => Number(b.is_admin) - Number(a.is_admin) || b.size - a.size);
+    res.json({ groups, phone_number: conn.phone_number });
+  } catch (e: any) {
+    res.status(e.status ?? 502).json({ error: e.message });
+  }
+});
+
+/** Link de convite de um grupo específico. Exige o número ser admin dele. */
+groupRotatorsRouter.post('/group-invite', async (req: Request, res: Response) => {
+  const { connection_id, group_jid } = req.body as { connection_id?: string; group_jid?: string };
+  if (!connection_id || !group_jid) {
+    return res.status(400).json({ error: 'connection_id e group_jid são obrigatórios' });
+  }
+
+  const conn = await prisma.whatsappConnection.findFirst({
+    where: { id: connection_id, workspace_id: req.workspaceId! },
+    select: { session_name: true, provider: true },
+  });
+  if (!conn || conn.provider !== 'EVOLUTION') {
+    return res.status(400).json({ error: 'Número inválido para esta operação.' });
+  }
+
+  try {
+    const cfg = await getWorkspaceEvolution(req.workspaceId!);
+    const invite_url = await fetchGroupInviteUrl(cfg, conn.session_name, group_jid);
+    if (!invite_url) {
+      return res.status(400).json({
+        error: 'O WhatsApp não liberou o link deste grupo. Confirme que o número é admin dele.',
+      });
+    }
+    res.json({ invite_url, group_jid });
+  } catch (e: any) {
+    res.status(e.status ?? 502).json({ error: e.message });
+  }
+});
 
 groupRotatorsRouter.get('/', async (req: Request, res: Response) => {
   const rotators = await prisma.groupRotator.findMany({
@@ -189,7 +273,9 @@ groupRotatorsRouter.put('/:id', async (req: Request, res: Response) => {
         ...t,
         rotator_id: existing.id,
         clicks_count: counts[t.invite_url] ?? 0,
-        group_jid: jids[t.invite_url] ?? null,
+        // JID que veio do payload (grupo escolhido pela lista) manda; senão
+        // preserva o que já estava salvo pra aquele convite.
+        group_jid: t.group_jid ?? jids[t.invite_url] ?? null,
       })),
     });
 

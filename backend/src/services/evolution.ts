@@ -148,6 +148,72 @@ export async function setWebhook(cfg: EvolutionConfig, name: string, url: string
   }
 }
 
+export type EvolutionGroup = {
+  jid: string;
+  name: string;
+  size: number;
+  is_admin: boolean;
+};
+
+/**
+ * Lista os grupos em que a instância está, marcando onde ela é admin.
+ *
+ * `admin` só vem com getParticipants=true. Isso importa porque tudo que o
+ * rotador precisa do grupo — pegar o link de convite e receber o evento de
+ * entrada — exige ser admin: sem isso o WhatsApp responde
+ * "No invite code / forbidden".
+ */
+export async function fetchAllGroups(
+  cfg: EvolutionConfig,
+  name: string,
+  ownerPhone: string | null
+): Promise<EvolutionGroup[]> {
+  const data = await call(
+    cfg,
+    'GET',
+    `/group/fetchAllGroups/${encodeURIComponent(name)}?getParticipants=true`
+  );
+  if (!Array.isArray(data)) return [];
+
+  const ownerDigits = (ownerPhone || '').replace(/\D/g, '');
+
+  return data.map((g: any) => {
+    // Participante traz `phoneNumber` (…@s.whatsapp.net) e `id` (…@lid).
+    // Casa pelo telefone: o @lid é um id interno que não bate com o nosso.
+    const me = ownerDigits
+      ? (g.participants || []).find(
+          (p: any) => String(p?.phoneNumber ?? '').replace(/\D/g, '') === ownerDigits
+        )
+      : null;
+    return {
+      jid: String(g.id ?? ''),
+      name: String(g.subject ?? '(sem nome)'),
+      size: Number(g.size ?? 0),
+      is_admin: me?.admin === 'admin' || me?.admin === 'superadmin',
+    };
+  }).filter((g: EvolutionGroup) => g.jid.endsWith('@g.us'));
+}
+
+/**
+ * Link de convite do grupo. Só funciona se a instância for admin — caso
+ * contrário o Evolution devolve 404 com "No invite code / forbidden", que é
+ * recusa do WhatsApp, não rota inexistente.
+ */
+export async function fetchGroupInviteUrl(
+  cfg: EvolutionConfig,
+  name: string,
+  groupJid: string
+): Promise<string | null> {
+  const data = await call(
+    cfg,
+    'GET',
+    `/group/inviteCode/${encodeURIComponent(name)}?groupJid=${encodeURIComponent(groupJid)}`
+  ).catch(() => null);
+
+  const code = data?.inviteCode ?? data?.code ?? null;
+  return code ? `https://chat.whatsapp.com/${code}` : null;
+}
+
 /**
  * Resolve o JID do grupo (120363...@g.us) a partir do código do convite.
  * Aceita a URL completa ou só o código. Retorna null se o convite for inválido
