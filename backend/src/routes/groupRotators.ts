@@ -6,6 +6,7 @@ import {
   fetchAllGroups,
   fetchGroupInviteUrl,
   fetchGroupJidByInvite,
+  fetchInstancePhone,
   getWorkspaceEvolution,
 } from '../services/evolution';
 
@@ -80,17 +81,35 @@ groupRotatorsRouter.get('/available-groups', async (req: Request, res: Response)
 
   try {
     const cfg = await getWorkspaceEvolution(req.workspaceId!);
-    const groups = await fetchAllGroups(cfg, conn.session_name, conn.phone_number, {
+
+    // Telefone faltando é o que quebra a detecção de admin. Busca e persiste,
+    // pra não repetir a chamada extra a cada abertura do seletor.
+    let phone = conn.phone_number;
+    if (!phone) {
+      phone = await fetchInstancePhone(cfg, conn.session_name).catch(() => null);
+      if (phone) {
+        await prisma.whatsappConnection.update({
+          where: { id: connectionId },
+          data: { phone_number: phone },
+        });
+      }
+    }
+
+    const groups = await fetchAllGroups(cfg, conn.session_name, phone, {
       force: req.query.refresh === '1',
     });
-    // Admin primeiro, depois maiores: os utilizáveis ficam no topo.
-    groups.sort((a, b) => Number(b.is_admin) - Number(a.is_admin) || b.size - a.size);
+    // Admin primeiro, indeterminado depois, e não-admin por último; dentro de
+    // cada faixa, os maiores primeiro.
+    const rank = (g: { is_admin: boolean | null }) => (g.is_admin === true ? 0 : g.is_admin === null ? 1 : 2);
+    groups.sort((a, b) => rank(a) - rank(b) || b.size - a.size);
+
     res.json({
       groups,
-      phone_number: conn.phone_number,
+      phone_number: phone,
       // Zero admin é um resultado comum e confuso: sem isso a tela vira uma
       // lista inteira desabilitada sem explicação no topo.
-      admin_count: groups.filter((g) => g.is_admin).length,
+      admin_count: groups.filter((g) => g.is_admin === true).length,
+      unknown_count: groups.filter((g) => g.is_admin === null).length,
     });
   } catch (e: any) {
     res.status(e.status ?? 502).json({ error: e.message });

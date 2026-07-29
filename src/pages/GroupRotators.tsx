@@ -150,7 +150,9 @@ type AvailableGroup = {
   jid: string;
   name: string;
   size: number;
-  is_admin: boolean;
+  // null = indeterminado. Bloquear o indeterminado esconderia grupos dos quais
+  // o número É admin — foi o que aconteceu quando a conexão estava sem telefone.
+  is_admin: boolean | null;
 };
 
 type FormState = Partial<GroupRotator> & { form_targets: TargetEntry[] };
@@ -220,6 +222,7 @@ export function GroupRotators() {
   const [chosen, setChosen] = useState<Set<string>>(new Set());
   const [importing, setImporting] = useState(false);
   const [adminCount, setAdminCount] = useState(0);
+  const [unknownCount, setUnknownCount] = useState(0);
 
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -314,6 +317,7 @@ export function GroupRotators() {
       const r = await fetcher(`/group-rotators/available-groups?connection_id=${form.connection_id}`);
       setAvailable(r.groups);
       setAdminCount(r.admin_count ?? 0);
+      setUnknownCount(r.unknown_count ?? 0);
     } catch (e: any) {
       setPickerError(e.message || 'Não consegui listar os grupos.');
     } finally {
@@ -912,12 +916,21 @@ export function GroupRotators() {
           <div className="flex-1 overflow-y-auto -mx-1 px-1">
             {/* Lista inteira desabilitada sem explicação parece tela quebrada.
                 Diz o que fazer antes de o usuário sair procurando. */}
-            {!picking && available.length > 0 && adminCount === 0 && (
+            {!picking && available.length > 0 && adminCount === 0 && unknownCount === 0 && (
               <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
                 <p className="text-xs leading-relaxed text-amber-800">
                   Este número está em <strong>{available.length} grupos</strong>, mas não é admin de
                   nenhum — por isso nada abaixo pode ser escolhido. Promova o número a admin no
                   WhatsApp e busque de novo, ou cole o link do convite na mão.
+                </p>
+              </div>
+            )}
+
+            {!picking && unknownCount > 0 && (
+              <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
+                <p className="text-xs leading-relaxed text-blue-800">
+                  Não consegui confirmar em quais grupos este número é admin. Pode escolher assim
+                  mesmo — se o WhatsApp recusar o link de algum, eu aviso qual foi.
                 </p>
               </div>
             )}
@@ -934,18 +947,20 @@ export function GroupRotators() {
               <div className="space-y-1">
                 {available.map((g) => {
                   const marcado = chosen.has(g.jid);
+                  // Só bloqueia quando temos certeza de que NÃO é admin.
+                  const bloqueado = g.is_admin === false;
                   return (
                     <label
                       key={g.jid}
                       className={`flex items-center gap-3 rounded-lg border p-2.5 ${
-                        g.is_admin
-                          ? 'cursor-pointer hover:bg-gray-50'
-                          : 'cursor-not-allowed border-gray-100 bg-gray-50/60'
+                        bloqueado
+                          ? 'cursor-not-allowed border-gray-100 bg-gray-50/60'
+                          : 'cursor-pointer hover:bg-gray-50'
                       } ${marcado ? 'border-blue-300 bg-blue-50/60' : ''}`}
                     >
                       <Checkbox
                         checked={marcado}
-                        disabled={!g.is_admin}
+                        disabled={bloqueado}
                         onCheckedChange={(v) =>
                           setChosen((prev) => {
                             const next = new Set(prev);
@@ -956,14 +971,15 @@ export function GroupRotators() {
                         }
                       />
                       <span className="min-w-0 flex-1">
-                        <span className={`block truncate text-sm ${g.is_admin ? 'text-gray-800' : 'text-gray-400'}`}>
+                        <span className={`block truncate text-sm ${bloqueado ? 'text-gray-400' : 'text-gray-800'}`}>
                           {g.name}
                         </span>
                         <span className="block text-[11px] text-gray-400">
                           {g.size} participante{g.size === 1 ? '' : 's'}
                           {/* Diz POR QUE não dá pra escolher, senão o usuário
                               acha que o grupo sumiu ou que a tela travou. */}
-                          {!g.is_admin && ' · o número não é admin deste grupo'}
+                          {g.is_admin === false && ' · o número não é admin deste grupo'}
+                          {g.is_admin === null && ' · admin não confirmado — dá pra tentar'}
                         </span>
                       </span>
                     </label>

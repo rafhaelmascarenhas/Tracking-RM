@@ -164,8 +164,20 @@ export type EvolutionGroup = {
   jid: string;
   name: string;
   size: number;
-  is_admin: boolean;
+  // null = não deu pra determinar (não sabemos o telefone da instância).
+  // Distinguir de `false` é essencial: afirmar "não é admin" sem saber faz a
+  // tela desabilitar grupos dos quais o número É admin.
+  is_admin: boolean | null;
 };
+
+/** Telefone (só dígitos) da instância, direto do Evolution. */
+export async function fetchInstancePhone(
+  cfg: EvolutionConfig,
+  name: string
+): Promise<string | null> {
+  const inst = await fetchInstance(cfg, name).catch(() => null);
+  return inst ? pickPhone(inst) : null;
+}
 
 /**
  * Lista os grupos em que a instância está, marcando onde ela é admin.
@@ -195,6 +207,14 @@ export async function fetchAllGroups(
   const hit = groupsCache.get(name);
   if (!opts.force && hit && Date.now() - hit.at < GROUPS_TTL_MS) return hit.groups;
 
+  // Conexão pode estar sem telefone salvo (importada, ou conectada antes de o
+  // campo ser preenchido). Sem ele não dá pra saber quem "eu" sou na lista de
+  // participantes — então busca no próprio Evolution antes de desistir.
+  let ownerDigits = (ownerPhone || '').replace(/\D/g, '');
+  if (!ownerDigits) {
+    ownerDigits = (await fetchInstancePhone(cfg, name).catch(() => null))?.replace(/\D/g, '') || '';
+  }
+
   const data = await call(
     cfg,
     'GET',
@@ -205,8 +225,6 @@ export async function fetchAllGroups(
   );
   if (!Array.isArray(data)) return [];
 
-  const ownerDigits = (ownerPhone || '').replace(/\D/g, '');
-
   const groups: EvolutionGroup[] = data
     .map((g: any) => {
       // Participante traz `phoneNumber` (…@s.whatsapp.net) e `id` (…@lid).
@@ -216,11 +234,15 @@ export async function fetchAllGroups(
             (p: any) => String(p?.phoneNumber ?? '').replace(/\D/g, '') === ownerDigits
           )
         : null;
+      // Sem telefone da instância, ou sem me achar entre os participantes, o
+      // honesto é "não sei" — não "não é admin".
+      const is_admin =
+        !ownerDigits || !me ? null : me.admin === 'admin' || me.admin === 'superadmin';
       return {
         jid: String(g.id ?? ''),
         name: String(g.subject ?? '(sem nome)'),
         size: Number(g.size ?? 0),
-        is_admin: me?.admin === 'admin' || me?.admin === 'superadmin',
+        is_admin,
       };
     })
     .filter((g: EvolutionGroup) => g.jid.endsWith('@g.us'));

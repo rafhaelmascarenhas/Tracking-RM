@@ -268,7 +268,11 @@ numbersRouter.get('/:id/status', async (req: Request, res: Response) => {
     // e costuma chegar antes do próximo poll. Responder do banco nesse caso
     // evita 2 chamadas ao provider justamente no instante em que o usuário está
     // olhando a tela esperando resposta.
-    if (conn.status === 'CONNECTED') {
+    //
+    // Exceção: sem telefone salvo, o atalho impediria pra sempre o preenchimento
+    // do campo — e o telefone é o que identifica a instância entre os
+    // participantes de um grupo, então sem ele a detecção de admin não funciona.
+    if (conn.status === 'CONNECTED' && conn.phone_number) {
       return res.json({
         status: 'CONNECTED',
         qrcode: null,
