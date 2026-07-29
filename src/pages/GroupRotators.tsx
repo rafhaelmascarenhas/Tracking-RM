@@ -219,6 +219,7 @@ export function GroupRotators() {
   const [pickerError, setPickerError] = useState<string | null>(null);
   const [chosen, setChosen] = useState<Set<string>>(new Set());
   const [importing, setImporting] = useState(false);
+  const [adminCount, setAdminCount] = useState(0);
 
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -312,6 +313,7 @@ export function GroupRotators() {
     try {
       const r = await fetcher(`/group-rotators/available-groups?connection_id=${form.connection_id}`);
       setAvailable(r.groups);
+      setAdminCount(r.admin_count ?? 0);
     } catch (e: any) {
       setPickerError(e.message || 'Não consegui listar os grupos.');
     } finally {
@@ -908,8 +910,22 @@ export function GroupRotators() {
           </DialogHeader>
 
           <div className="flex-1 overflow-y-auto -mx-1 px-1">
+            {/* Lista inteira desabilitada sem explicação parece tela quebrada.
+                Diz o que fazer antes de o usuário sair procurando. */}
+            {!picking && available.length > 0 && adminCount === 0 && (
+              <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <p className="text-xs leading-relaxed text-amber-800">
+                  Este número está em <strong>{available.length} grupos</strong>, mas não é admin de
+                  nenhum — por isso nada abaixo pode ser escolhido. Promova o número a admin no
+                  WhatsApp e busque de novo, ou cole o link do convite na mão.
+                </p>
+              </div>
+            )}
+
             {picking ? (
-              <p className="py-8 text-center text-sm text-gray-500">Buscando grupos...</p>
+              <p className="py-8 text-center text-sm text-gray-500">
+                Buscando grupos... isso pode levar até um minuto em contas com muitos grupos.
+              </p>
             ) : available.length === 0 && !pickerError ? (
               <p className="py-8 text-center text-sm text-gray-500">
                 Este número não está em nenhum grupo.

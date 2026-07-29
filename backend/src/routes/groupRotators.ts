@@ -80,10 +80,18 @@ groupRotatorsRouter.get('/available-groups', async (req: Request, res: Response)
 
   try {
     const cfg = await getWorkspaceEvolution(req.workspaceId!);
-    const groups = await fetchAllGroups(cfg, conn.session_name, conn.phone_number);
+    const groups = await fetchAllGroups(cfg, conn.session_name, conn.phone_number, {
+      force: req.query.refresh === '1',
+    });
     // Admin primeiro, depois maiores: os utilizáveis ficam no topo.
     groups.sort((a, b) => Number(b.is_admin) - Number(a.is_admin) || b.size - a.size);
-    res.json({ groups, phone_number: conn.phone_number });
+    res.json({
+      groups,
+      phone_number: conn.phone_number,
+      // Zero admin é um resultado comum e confuso: sem isso a tela vira uma
+      // lista inteira desabilitada sem explicação no topo.
+      admin_count: groups.filter((g) => g.is_admin).length,
+    });
   } catch (e: any) {
     res.status(e.status ?? 502).json({ error: e.message });
   }

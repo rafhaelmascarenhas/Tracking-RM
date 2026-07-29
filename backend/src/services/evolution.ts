@@ -35,11 +35,16 @@ export async function getWorkspaceEvolution(workspaceId: string): Promise<Evolut
   return { url: ws.evolution_url.replace(/\/+$/, ''), apiKey: ws.evolution_api_key };
 }
 
+// Sem timeout, uma chamada pendurada segura a requisição HTTP indefinidamente e
+// a tela fica girando pra sempre. Acontece de verdade: fetchAllGroups numa conta
+// com muitos grupos grandes passa de 2 minutos sem responder.
+const DEFAULT_TIMEOUT_MS = 30_000;
+
 async function call(
   cfg: EvolutionConfig,
   method: string,
   path: string,
-  opts: { body?: any } = {}
+  opts: { body?: any; timeoutMs?: number } = {}
 ): Promise<any> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -52,8 +57,15 @@ async function call(
       method,
       headers,
       body: opts.body ? JSON.stringify(opts.body) : undefined,
+      signal: AbortSignal.timeout(opts.timeoutMs ?? DEFAULT_TIMEOUT_MS),
     });
   } catch (e: any) {
+    if (e?.name === 'TimeoutError' || e?.name === 'AbortError') {
+      throw new EvolutionError(
+        `A Evolution não respondeu a tempo (${((opts.timeoutMs ?? DEFAULT_TIMEOUT_MS) / 1000).toFixed(0)}s). Tente de novo em instantes.`,
+        504
+      );
+    }
     throw new EvolutionError(`Falha de rede ao falar com Evolution: ${e.message}`);
   }
 
@@ -163,35 +175,58 @@ export type EvolutionGroup = {
  * entrada — exige ser admin: sem isso o WhatsApp responde
  * "No invite code / forbidden".
  */
+// Cache curto por instância: a chamada é cara (uma conta com grupos de 1500+
+// membros passa de 2 min) e o usuário reabre o seletor várias vezes enquanto
+// monta o rotador. Repetir a chamada não só demora como parece travar a
+// Evolution — a segunda seguida costuma estourar o timeout.
+const groupsCache = new Map<string, { at: number; groups: EvolutionGroup[] }>();
+const GROUPS_TTL_MS = 120_000;
+
+export function clearGroupsCache(instance: string) {
+  groupsCache.delete(instance);
+}
+
 export async function fetchAllGroups(
   cfg: EvolutionConfig,
   name: string,
-  ownerPhone: string | null
+  ownerPhone: string | null,
+  opts: { force?: boolean } = {}
 ): Promise<EvolutionGroup[]> {
+  const hit = groupsCache.get(name);
+  if (!opts.force && hit && Date.now() - hit.at < GROUPS_TTL_MS) return hit.groups;
+
   const data = await call(
     cfg,
     'GET',
-    `/group/fetchAllGroups/${encodeURIComponent(name)}?getParticipants=true`
+    `/group/fetchAllGroups/${encodeURIComponent(name)}?getParticipants=true`,
+    // Bem acima do padrão: esta chamada é lenta por natureza. Ainda assim
+    // limitada, pra falhar com mensagem em vez de pendurar a tela.
+    { timeoutMs: 90_000 }
   );
   if (!Array.isArray(data)) return [];
 
   const ownerDigits = (ownerPhone || '').replace(/\D/g, '');
 
-  return data.map((g: any) => {
-    // Participante traz `phoneNumber` (…@s.whatsapp.net) e `id` (…@lid).
-    // Casa pelo telefone: o @lid é um id interno que não bate com o nosso.
-    const me = ownerDigits
-      ? (g.participants || []).find(
-          (p: any) => String(p?.phoneNumber ?? '').replace(/\D/g, '') === ownerDigits
-        )
-      : null;
-    return {
-      jid: String(g.id ?? ''),
-      name: String(g.subject ?? '(sem nome)'),
-      size: Number(g.size ?? 0),
-      is_admin: me?.admin === 'admin' || me?.admin === 'superadmin',
-    };
-  }).filter((g: EvolutionGroup) => g.jid.endsWith('@g.us'));
+  const groups: EvolutionGroup[] = data
+    .map((g: any) => {
+      // Participante traz `phoneNumber` (…@s.whatsapp.net) e `id` (…@lid).
+      // Casa pelo telefone: o @lid é um id interno que não bate com o nosso.
+      const me = ownerDigits
+        ? (g.participants || []).find(
+            (p: any) => String(p?.phoneNumber ?? '').replace(/\D/g, '') === ownerDigits
+          )
+        : null;
+      return {
+        jid: String(g.id ?? ''),
+        name: String(g.subject ?? '(sem nome)'),
+        size: Number(g.size ?? 0),
+        is_admin: me?.admin === 'admin' || me?.admin === 'superadmin',
+      };
+    })
+    .filter((g: EvolutionGroup) => g.jid.endsWith('@g.us'));
+
+  groupsCache.set(name, { at: Date.now(), groups });
+  return groups;
 }
 
 /**
