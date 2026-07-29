@@ -23,6 +23,7 @@ import {
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import { clearPanelToken } from '@/lib/panelAuth';
+import { WorkspaceSwitcher } from '@/components/WorkspaceSwitcher';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -116,11 +117,13 @@ export function Layout() {
           </div>
           
           <div className="flex items-center gap-4">
+             <WorkspaceSwitcher />
+
              <div className="flex items-center gap-2 bg-green-50/80 text-green-700 px-3 py-1.5 rounded-full text-xs font-semibold border border-green-200/50 shadow-sm">
                 <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
                 Conectado
              </div>
-             
+
              <div className="h-5 w-[1px] bg-gray-200"></div>
              
              <div className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity">

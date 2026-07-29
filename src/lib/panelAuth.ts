@@ -48,6 +48,31 @@ export async function loginWithPassword(password: string) {
   return token as string;
 }
 
+/**
+ * Troca o cliente ativo: pede um token novo apontando pro workspace escolhido
+ * e recarrega. O reload é intencional — cada tela cacheia dados do cliente
+ * anterior no próprio estado, e limpar isso tela por tela seria fácil de
+ * esquecer numa tela nova, deixando dado de um cliente aparecer no outro.
+ */
+export async function switchWorkspace(workspaceId: string) {
+  const res = await fetch(`${API_BASE}/api/workspaces/${workspaceId}/switch`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${getPanelToken()}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.error || `Troca de cliente falhou: ${res.status}`);
+  }
+
+  const { token } = await res.json();
+  setPanelToken(token);
+  window.location.reload();
+}
+
 // Token expirado/invalido: limpa e volta pro login em vez de deixar a tela
 // presa num erro que so um F5 manual resolveria.
 export function onUnauthorized() {

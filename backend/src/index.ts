@@ -9,6 +9,7 @@ import { journeyStagesRouter } from './routes/journeyStages';
 import { conversionEventsRouter } from './routes/conversionEvents';
 import { numbersRouter } from './routes/numbers';
 import { workspaceRouter } from './routes/workspace';
+import { workspacesRouter } from './routes/workspaces';
 import { redirectRouter } from './routes/redirect';
 import { rotatorRedirectRouter } from './routes/rotatorRedirect';
 import { rotatorsRouter } from './routes/rotators';
@@ -50,6 +51,10 @@ app.use('/api/group-rotators', groupRotatorsRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/triggers', triggersRouter);
 app.use('/api/pixel-fires', pixelFiresRouter);
+// Plural = troca de cliente. Singular = configurações do cliente atual.
+// Plural primeiro: app.use casa por prefixo, e um dia '/api/workspace' pode
+// engolir '/api/workspaces' se o matcher mudar.
+app.use('/api/workspaces', workspacesRouter);
 app.use('/api/workspace', workspaceRouter);
 
 app.listen(PORT, () => {
