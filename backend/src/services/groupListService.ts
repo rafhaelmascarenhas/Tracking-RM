@@ -28,6 +28,8 @@ const READY_TTL_MS = 10 * 60_000;
 // exemplo) não pode bloquear tentativas novas pra sempre.
 const LOADING_MAX_MS = 6 * 60_000;
 
+const ERROR_TTL_MS = 2 * 60_000;
+
 export function getGroupJob(instance: string): GroupJob | null {
   const job = jobs.get(instance);
   if (!job) return null;
@@ -37,6 +39,12 @@ export function getGroupJob(instance: string): GroupJob | null {
     return null;
   }
   if (job.state === 'loading' && Date.now() - job.startedAt > LOADING_MAX_MS) {
+    jobs.delete(instance);
+    return null;
+  }
+  // Erro também expira, senão uma falha passageira bloquearia o enriquecimento
+  // até o processo reiniciar.
+  if (job.state === 'error' && Date.now() - job.finishedAt > ERROR_TTL_MS) {
     jobs.delete(instance);
     return null;
   }

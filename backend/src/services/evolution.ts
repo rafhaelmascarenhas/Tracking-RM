@@ -170,6 +170,44 @@ export type EvolutionGroup = {
   is_admin: boolean | null;
 };
 
+/**
+ * Grupos a partir da lista de conversas. É o caminho RÁPIDO.
+ *
+ * Medido em produção na mesma instância: findChats devolve 804 conversas (85
+ * grupos) em 1,4s, enquanto fetchAllGroups passa de 180s — inclusive com
+ * getParticipants=false. O custo do fetchAllGroups é varrer o store do Baileys,
+ * não montar o payload, então não há variante leve dele.
+ *
+ * O preço: findChats não traz participantes nem tamanho, então `is_admin` fica
+ * indeterminado e `size` zero. Indeterminado é utilizável (o usuário escolhe e
+ * o erro aparece na hora de pegar o convite); esperar 3 minutos não é.
+ */
+export async function fetchGroupChats(
+  cfg: EvolutionConfig,
+  name: string
+): Promise<EvolutionGroup[]> {
+  const data = await call(cfg, 'POST', `/chat/findChats/${encodeURIComponent(name)}`, {
+    body: {},
+    timeoutMs: 60_000,
+  });
+  if (!Array.isArray(data)) return [];
+
+  const seen = new Set<string>();
+  const groups: EvolutionGroup[] = [];
+  for (const c of data) {
+    const jid = String(c?.remoteJid ?? '');
+    if (!jid.endsWith('@g.us') || seen.has(jid)) continue;
+    seen.add(jid);
+    groups.push({
+      jid,
+      name: String(c?.pushName || '(sem nome)'),
+      size: 0,
+      is_admin: null,
+    });
+  }
+  return groups;
+}
+
 /** Telefone (só dígitos) da instância, direto do Evolution. */
 export async function fetchInstancePhone(
   cfg: EvolutionConfig,

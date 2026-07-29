@@ -224,6 +224,7 @@ export function GroupRotators() {
   const [adminCount, setAdminCount] = useState(0);
   const [unknownCount, setUnknownCount] = useState(0);
   const [elapsed, setElapsed] = useState(0);
+  const [enriching, setEnriching] = useState(false);
 
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -317,33 +318,35 @@ export function GroupRotators() {
     setPickerError(null);
     setElapsed(0);
 
-    const t0 = Date.now();
-    const tick = setInterval(() => setElapsed(Math.floor((Date.now() - t0) / 1000)), 1000);
+    const aplica = (r: any) => {
+      setAvailable(r.groups);
+      setAdminCount(r.admin_count ?? 0);
+      setUnknownCount(r.unknown_count ?? 0);
+      setEnriching(!!r.enriching);
+    };
 
     try {
-      // Até 6 min: o servidor desiste antes disso, então quem para primeiro é ele.
-      for (let i = 0; i < 120; i++) {
-        const q = refresh && i === 0 ? '&refresh=1' : '';
-        const r = await fetcher(`/group-rotators/available-groups?connection_id=${connectionId}${q}`);
-
-        if (r.status === 'ready') {
-          setAvailable(r.groups);
-          setAdminCount(r.admin_count ?? 0);
-          setUnknownCount(r.unknown_count ?? 0);
-          return;
-        }
-        if (r.status === 'error') {
-          setPickerError(r.error || 'Não consegui listar os grupos.');
-          return;
-        }
-        await new Promise((res) => setTimeout(res, 3000));
-      }
-      setPickerError('A busca passou de 6 minutos. Tente novamente mais tarde.');
+      const q = refresh ? '&refresh=1' : '';
+      aplica(await fetcher(`/group-rotators/available-groups?connection_id=${connectionId}${q}`));
     } catch (e: any) {
       setPickerError(e.message || 'Não consegui listar os grupos.');
-    } finally {
-      clearInterval(tick);
       setPicking(false);
+      return;
+    }
+    setPicking(false);
+
+    // A lista já está utilizável. Daqui pra frente só melhora: quando o
+    // enriquecimento terminar, os selos de admin aparecem sozinhos. Silencioso
+    // de propósito — falhar aqui não tira nada de quem já está escolhendo.
+    for (let i = 0; i < 60; i++) {
+      await new Promise((res) => setTimeout(res, 5000));
+      try {
+        const r = await fetcher(`/group-rotators/available-groups?connection_id=${connectionId}`);
+        aplica(r);
+        if (!r.enriching) return;
+      } catch {
+        return;
+      }
     }
   };
 
@@ -961,8 +964,9 @@ export function GroupRotators() {
             {!picking && unknownCount > 0 && (
               <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
                 <p className="text-xs leading-relaxed text-blue-800">
-                  Não consegui confirmar em quais grupos este número é admin. Pode escolher assim
-                  mesmo — se o WhatsApp recusar o link de algum, eu aviso qual foi.
+                  {enriching
+                    ? 'Ainda conferindo em quais grupos este número é admin — pode escolher enquanto isso.'
+                    : 'Não consegui confirmar em quais grupos este número é admin. Pode escolher assim mesmo — se o WhatsApp recusar o link de algum, eu aviso qual foi.'}
                 </p>
               </div>
             )}
@@ -1014,7 +1018,9 @@ export function GroupRotators() {
                           {g.name}
                         </span>
                         <span className="block text-[11px] text-gray-400">
-                          {g.size} participante{g.size === 1 ? '' : 's'}
+                          {/* size 0 = veio da lista rápida, que não traz contagem.
+                              Mostrar "0 participantes" seria informação falsa. */}
+                          {g.size > 0 ? `${g.size} participantes` : 'grupo'}
                           {/* Diz POR QUE não dá pra escolher, senão o usuário
                               acha que o grupo sumiu ou que a tela travou. */}
                           {g.is_admin === false && ' · o número não é admin deste grupo'}

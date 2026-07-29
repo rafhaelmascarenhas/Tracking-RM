@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
 import { normalizeInviteUrl } from '../services/groupRotatorService';
 import {
+  fetchGroupChats,
   fetchGroupInviteUrl,
   fetchGroupJidByInvite,
   fetchInstancePhone,
@@ -97,30 +98,35 @@ groupRotatorsRouter.get('/available-groups', async (req: Request, res: Response)
 
     if (req.query.refresh === '1') clearGroupJob(conn.session_name);
 
-    let job = getGroupJob(conn.session_name);
-    if (!job) job = startGroupJob(cfg, conn.session_name, phone);
+    // Lista rápida (~1,5s) vem das conversas. É o que o usuário vê de imediato.
+    const groups = await fetchGroupChats(cfg, conn.session_name);
 
-    if (job.state === 'loading') {
-      return res.json({
-        status: 'loading',
-        elapsed_ms: Date.now() - job.startedAt,
-        phone_number: phone,
-      });
-    }
-    if (job.state === 'error') {
-      return res.json({ status: 'error', error: job.error, phone_number: phone });
+    // Enriquecimento: quem é admin e quantos membros só existe no
+    // fetchAllGroups, que é lento demais pra segurar a resposta. Roda em
+    // segundo plano; quando terminar, a próxima consulta já vem marcada.
+    const job = getGroupJob(conn.session_name) ?? startGroupJob(cfg, conn.session_name, phone);
+    if (job.state === 'ready') {
+      const byJid = new Map(job.groups.map((g) => [g.jid, g]));
+      for (const g of groups) {
+        const rico = byJid.get(g.jid);
+        if (rico) {
+          g.is_admin = rico.is_admin;
+          g.size = rico.size;
+        }
+      }
     }
 
     // Admin primeiro, indeterminado depois, e não-admin por último; dentro de
     // cada faixa, os maiores primeiro.
     const rank = (g: { is_admin: boolean | null }) => (g.is_admin === true ? 0 : g.is_admin === null ? 1 : 2);
-    const groups = [...job.groups].sort((a, b) => rank(a) - rank(b) || b.size - a.size);
+    groups.sort((a, b) => rank(a) - rank(b) || b.size - a.size || a.name.localeCompare(b.name));
 
     res.json({
       status: 'ready',
       groups,
       phone_number: phone,
-      took_ms: job.finishedAt - job.startedAt,
+      // Diz à tela se ainda vale reperguntar pra ganhar os selos de admin.
+      enriching: job.state === 'loading',
       // Zero admin é um resultado comum e confuso: sem isso a tela vira uma
       // lista inteira desabilitada sem explicação no topo.
       admin_count: groups.filter((g) => g.is_admin === true).length,
