@@ -264,24 +264,10 @@ numbersRouter.get('/:id/status', async (req: Request, res: Response) => {
     if (conn.provider === 'MANUAL') return res.json({ status: conn.status, qrcode: null });
     if (conn.provider !== 'EVOLUTION' && !conn.uazapi_token) return res.json({ status: conn.status, qrcode: null });
 
-    // O webhook de connection.update já grava CONNECTED assim que o QR é lido,
-    // e costuma chegar antes do próximo poll. Responder do banco nesse caso
-    // evita 2 chamadas ao provider justamente no instante em que o usuário está
-    // olhando a tela esperando resposta.
-    //
-    // Exceção: sem telefone salvo, o atalho impediria pra sempre o preenchimento
-    // do campo — e o telefone é o que identifica a instância entre os
-    // participantes de um grupo, então sem ele a detecção de admin não funciona.
-    if (conn.status === 'CONNECTED' && conn.phone_number) {
-      return res.json({
-        status: 'CONNECTED',
-        qrcode: null,
-        phone: conn.phone_number,
-        profileName: conn.profile_name,
-        from_cache: true,
-      });
-    }
-
+    // Sempre pergunta ao provider. Já teve atalho respondendo CONNECTED direto do
+    // banco quando havia telefone salvo: como só o inbound grava CONNECTED e nada
+    // grava DISCONNECTED, o número podia cair (sessão em "connecting" no Evolution)
+    // e o painel jurar verde pra sempre, escondendo horas de mensagem perdida.
     const s = await providerStatus(req.workspaceId!, conn);
     await syncConn(conn.id, s);
     res.json(s);

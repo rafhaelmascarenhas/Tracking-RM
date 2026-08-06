@@ -28,6 +28,20 @@ export function parseMoneyBR(text: string): number | null {
 }
 
 /**
+ * Normaliza texto pra comparação de frase/termo-chave: minúsculo, sem acento e com
+ * espaços colapsados. Atendente digita "Parabens pela sua compra" e o gatilho está
+ * salvo com acento (ou o contrário) — sem isso o Purchase nunca dispara.
+ */
+export function normalizeForMatch(text: string): string {
+  return (text || '')
+    .normalize('NFD')
+    .replace(new RegExp('[\\u0300-\\u036f]', 'g'), '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
  * Avalia os gatilhos de conversão do workspace contra uma mensagem.
  * Dispara fireMetaCapi (via fila) quando bate, 1x por lead+gatilho.
  *
@@ -59,7 +73,7 @@ export async function evaluateTriggers(opts: {
     leadRotatorId = click?.rotator_id ?? null;
   }
 
-  const lowerText = (text || '').toLowerCase();
+  const lowerText = normalizeForMatch(text);
 
   for (const t of triggers) {
     // Filtro de direção (quem manda a frase)
@@ -78,7 +92,7 @@ export async function evaluateTriggers(opts: {
       // Abrir conversa = qualquer mensagem do lead. Dedupe garante 1x.
       matches = direction === 'lead';
     } else if (t.trigger_type === 'phrase' && t.phrase) {
-      matches = lowerText.includes(t.phrase.toLowerCase());
+      matches = lowerText.includes(normalizeForMatch(t.phrase));
     }
     if (!matches) continue;
 

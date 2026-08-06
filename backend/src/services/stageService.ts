@@ -1,6 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { enqueueCapiEvent } from '../lib/queue';
-import { parseMoneyBR } from './triggerService';
+import { parseMoneyBR, normalizeForMatch } from './triggerService';
 
 /**
  * Move um lead pra uma etapa da jornada e dispara os conversionEvents dela.
@@ -113,7 +113,7 @@ export async function applyKeywordStage(opts: {
   text: string;
 }): Promise<{ id: string; name: string } | null> {
   const { workspaceId, leadId, text } = opts;
-  const lower = (text || '').toLowerCase();
+  const lower = normalizeForMatch(text);
   if (!lower.trim()) return null;
 
   // Só considera etapas do funil da origem do lead (CTWA ou Rotador).
@@ -124,7 +124,7 @@ export async function applyKeywordStage(opts: {
   });
 
   const match = stages.find((s) => {
-    const kw = (s.keyword || '').toLowerCase().trim();
+    const kw = normalizeForMatch(s.keyword || '');
     return kw.length > 0 && lower.includes(kw);
   });
   if (!match) return null;
