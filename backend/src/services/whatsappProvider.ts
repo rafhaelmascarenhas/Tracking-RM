@@ -70,6 +70,23 @@ export async function providerStatus(workspaceId: string, conn: ConnRef): Promis
   return uaz.getStatus(cfg, conn.uazapi_token);
 }
 
+/**
+ * Estado ao vivo, barato e sem efeito colateral — pra listagem.
+ *
+ * `providerStatus` no Evolution pede QR novo quando a instância não está no ar;
+ * numa lista de N números isso é N geraçoes de QR por render.
+ */
+export async function providerLiveState(workspaceId: string, conn: ConnRef): Promise<string> {
+  if (isEvo(conn.provider)) {
+    const cfg = await evo.getWorkspaceEvolution(workspaceId);
+    return evo.getConnectionState(cfg, conn.session_name);
+  }
+  const cfg = await uaz.getWorkspaceUazapi(workspaceId);
+  if (!conn.uazapi_token) throw new uaz.UazapiError('Conexão sem token uazapi.', 400);
+  const s = await uaz.getStatus(cfg, conn.uazapi_token);
+  return s.status;
+}
+
 export async function providerDisconnect(workspaceId: string, conn: ConnRef): Promise<void> {
   if (isEvo(conn.provider)) {
     const cfg = await evo.getWorkspaceEvolution(workspaceId);

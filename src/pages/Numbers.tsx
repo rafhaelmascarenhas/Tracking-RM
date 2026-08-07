@@ -17,9 +17,19 @@ type Conn = {
   status: string;
   profile_name?: string | null;
   provider?: string;
+  // false = estado confirmado no provider agora; true = provider não respondeu e
+  // o que está aí é o último valor gravado, que pode estar velho.
+  status_stale?: boolean;
 };
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status, stale }: { status: string; stale?: boolean }) {
+  if (stale) {
+    return (
+      <Badge variant="outline" className="text-muted-foreground" title="Provider não respondeu; último estado conhecido">
+        {status === 'CONNECTED' ? 'Conectado?' : status === 'CONNECTING' ? 'Conectando?' : 'Desconectado?'}
+      </Badge>
+    );
+  }
   if (status === 'MANUAL') return <Badge variant="outline" className="text-amber-600 border-amber-300">Manual</Badge>;
   if (status === 'CONNECTED') return <Badge className="bg-emerald-500">Conectado</Badge>;
   if (status === 'CONNECTING') return <Badge className="bg-amber-500">Conectando</Badge>;
@@ -460,7 +470,7 @@ export function Numbers() {
                   <TableCell className="font-medium">{c.session_name}{c.profile_name ? <span className="text-muted-foreground font-normal"> · {c.profile_name}</span> : null}</TableCell>
                   <TableCell><Badge variant="outline">{c.provider === 'MANUAL' ? 'Manual' : c.provider === 'EVOLUTION' ? 'Evolution' : 'uazapi'}</Badge></TableCell>
                   <TableCell>{c.phone_number || '-'}</TableCell>
-                  <TableCell><StatusBadge status={c.status} /></TableCell>
+                  <TableCell><StatusBadge status={c.status} stale={c.status_stale} /></TableCell>
                   <TableCell className="text-right space-x-2">
                     {c.provider !== 'MANUAL' && (
                       <Button variant={c.status === 'CONNECTED' ? 'outline' : 'default'} size="sm" onClick={() => setQrConn(c)}>

@@ -7,6 +7,7 @@ import {
   providerSetWebhook,
   providerConnect,
   providerStatus,
+  providerLiveState,
   providerDisconnect,
   providerDelete,
 } from '../services/whatsappProvider';
@@ -39,12 +40,45 @@ async function syncConn(id: string, s: { status: string; phone?: string | null; 
   });
 }
 
+/**
+ * Lista os números conferindo o estado REAL no provider, não a coluna do banco.
+ *
+ * `status` só era escrito na criação e nos webhooks CONNECTION_UPDATE. Quando a
+ * sessão cai sem o provider entregar o evento (queda do webhook, instância presa
+ * em `connecting` depois de um QR lido pela metade), a coluna congela em
+ * CONNECTED e a tela mostra verde pra um número que não recebe mensagem nenhuma.
+ * Foi assim que o tracking-adler apareceu "Conectado" estando em `connecting`.
+ *
+ * Falha do provider não derruba a listagem: cai pro valor do banco e marca
+ * `status_stale` pra tela poder avisar que não deu pra confirmar.
+ */
 numbersRouter.get('/', async (req: Request, res: Response) => {
   const connections = await prisma.whatsappConnection.findMany({
     where: { workspace_id: req.workspaceId! },
     orderBy: { created_at: 'desc' },
   });
-  res.json(connections);
+
+  const live = await Promise.all(
+    connections.map(async (c) => {
+      if (c.provider === 'MANUAL') return { ...c, status_stale: false };
+      try {
+        const status = await providerLiveState(req.workspaceId!, {
+          provider: c.provider,
+          session_name: c.session_name,
+          uazapi_token: c.uazapi_token,
+        });
+        if (status !== c.status) {
+          await prisma.whatsappConnection.update({ where: { id: c.id }, data: { status } });
+        }
+        return { ...c, status, status_stale: false };
+      } catch (e: any) {
+        console.warn(`[numbers] estado ao vivo de "${c.session_name}" falhou: ${e.message}`);
+        return { ...c, status_stale: true };
+      }
+    })
+  );
+
+  res.json(live);
 });
 
 numbersRouter.get('/:id', async (req: Request, res: Response) => {

@@ -343,6 +343,18 @@ export async function connectInstance(cfg: EvolutionConfig, name: string) {
   };
 }
 
+/**
+ * Só o estado da conexão, sem efeito colateral.
+ *
+ * Diferente de `getStatus`, NÃO chama `/instance/connect` quando a instância
+ * está fora do ar — aquela chamada gera um QR novo e é o que torna o getStatus
+ * caro demais pra rodar na listagem de números.
+ */
+export async function getConnectionState(cfg: EvolutionConfig, name: string) {
+  const state = await call(cfg, 'GET', `/instance/connectionState/${encodeURIComponent(name)}`);
+  return normalizeState(state?.instance?.state ?? state?.state);
+}
+
 /** Consulta status. Se ainda não conectado, devolve QR fresco pra polling. */
 export async function getStatus(cfg: EvolutionConfig, name: string) {
   const state = await call(cfg, 'GET', `/instance/connectionState/${encodeURIComponent(name)}`);
