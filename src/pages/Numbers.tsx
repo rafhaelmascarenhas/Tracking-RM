@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Plus, Settings, Trash2, QrCode, Loader2, CheckCircle2, RefreshCw, KeyRound } from 'lucide-react';
+import { Plus, Settings, Trash2, QrCode, Loader2, CheckCircle2, RefreshCw, KeyRound, Webhook } from 'lucide-react';
 import { fetcher, poster, deleter } from '@/lib/fetcher';
 
 type Conn = {
@@ -24,6 +24,40 @@ function StatusBadge({ status }: { status: string }) {
   if (status === 'CONNECTED') return <Badge className="bg-emerald-500">Conectado</Badge>;
   if (status === 'CONNECTING') return <Badge className="bg-amber-500">Conectando</Badge>;
   return <Badge variant="destructive">Desconectado</Badge>;
+}
+
+/**
+ * Reassina o webhook da instância com a lista de eventos atual do backend.
+ * Instância criada antes de um evento novo existir (GROUP_PARTICIPANTS_UPDATE)
+ * fica assinada só nos antigos: reconectar pelo QR NÃO corrige, porque o
+ * /connect não toca no webhook. Sem isso a contagem de entradas em grupo fica
+ * em zero sem nenhum erro.
+ */
+function ResyncWebhookButton({ id }: { id: string }) {
+  const [state, setState] = useState<'idle' | 'loading' | 'ok' | 'err'>('idle');
+  const run = async () => {
+    setState('loading');
+    try {
+      await poster(`/numbers/${id}/resync-webhook`, {});
+      setState('ok');
+    } catch {
+      setState('err');
+    }
+    setTimeout(() => setState('idle'), 2500);
+  };
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={run}
+      disabled={state === 'loading'}
+      title="Reassinar webhook (necessário para contar entradas em grupo)"
+    >
+      {state === 'loading' ? <Loader2 className="h-4 w-4 animate-spin" />
+        : state === 'ok' ? <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+        : <Webhook className={`h-4 w-4 ${state === 'err' ? 'text-red-500' : ''}`} />}
+    </Button>
+  );
 }
 
 // Modal de leitura de QR: chama /connect, mostra o QR e faz polling de status até conectar.
@@ -433,6 +467,7 @@ export function Numbers() {
                         <QrCode className="h-4 w-4 mr-1" /> {c.status === 'CONNECTED' ? 'Reconectar' : 'Conectar'}
                       </Button>
                     )}
+                    {c.provider !== 'MANUAL' && <ResyncWebhookButton id={c.id} />}
                     <Button variant="outline" size="sm" asChild>
                       <Link to={`/numbers/${c.id}`}><Settings className="h-4 w-4" /></Link>
                     </Button>
