@@ -13,14 +13,24 @@ import { prisma } from '../lib/prisma';
 
 export type ParticipantAction = 'add' | 'remove' | 'promote' | 'demote';
 
-function toPhone(jid: string): string {
-  return jid.replace(/@.*$/, '').replace(/\D/g, '');
+/**
+ * O Evolution manda `participants` ora como lista de strings ("55...@s.whatsapp.net"),
+ * ora como lista de objetos ({ id, admin }). Assumir string derrubava o handler
+ * inteiro com "jid.replace is not a function", e o webhook respondia 500 — ou
+ * seja, o evento chegava e era jogado fora.
+ */
+function toPhone(participant: unknown): string {
+  const jid =
+    typeof participant === 'string'
+      ? participant
+      : ((participant as any)?.id ?? (participant as any)?.jid ?? '');
+  return String(jid).replace(/@.*$/, '').replace(/\D/g, '');
 }
 
 export async function recordParticipantUpdate(params: {
   workspaceId: string;
   groupJid: string;
-  participants: string[];
+  participants: unknown[];
   action: ParticipantAction;
 }): Promise<{ added: number; removed: number }> {
   const { workspaceId, groupJid, participants, action } = params;
