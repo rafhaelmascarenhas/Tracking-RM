@@ -26,13 +26,17 @@ function StatusBadge({ status, stale }: { status: string; stale?: boolean }) {
   if (stale) {
     return (
       <Badge variant="outline" className="text-muted-foreground" title="Provider não respondeu; último estado conhecido">
-        {status === 'CONNECTED' ? 'Conectado?' : status === 'CONNECTING' ? 'Conectando?' : 'Desconectado?'}
+        {status === 'CONNECTED' ? 'Conectado?' : status === 'CONNECTING' ? 'Aguardando QR?' : 'Desconectado?'}
       </Badge>
     );
   }
   if (status === 'MANUAL') return <Badge variant="outline" className="text-amber-600 border-amber-300">Manual</Badge>;
   if (status === 'CONNECTED') return <Badge className="bg-emerald-500">Conectado</Badge>;
-  if (status === 'CONNECTING') return <Badge className="bg-amber-500">Conectando</Badge>;
+  // "Conectando" dava a entender que a conexão estava em andamento sozinha. O
+  // estado é passivo: o socket está de pé esperando alguém parear, e o Evolution
+  // troca o QR a cada ~60s até o QRCODE_LIMIT (30) — depois cai pra close. Nada
+  // acontece sem alguém escanear.
+  if (status === 'CONNECTING') return <Badge className="bg-amber-500">Aguardando QR</Badge>;
   return <Badge variant="destructive">Desconectado</Badge>;
 }
 

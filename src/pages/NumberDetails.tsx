@@ -62,7 +62,7 @@ export function NumberDetails() {
             {conn.status_stale
               ? <Badge variant="outline" className="text-muted-foreground" title="Provider não respondeu; último estado conhecido">Não confirmado</Badge>
               : conn.status === 'CONNECTED' ? <Badge className="bg-emerald-500">Conectado</Badge>
-              : conn.status === 'CONNECTING' ? <Badge className="bg-amber-500">Conectando</Badge>
+              : conn.status === 'CONNECTING' ? <Badge className="bg-amber-500">Aguardando QR</Badge>
               : <Badge variant="destructive">Desconectado</Badge>}
           </div>
           <p className="text-muted-foreground mt-1">{conn.phone_number || 'Sem telefone'}</p>
