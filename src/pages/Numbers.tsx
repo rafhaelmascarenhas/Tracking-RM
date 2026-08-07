@@ -275,6 +275,7 @@ export function Numbers() {
   const [name, setName] = useState('');
   const [provider, setProvider] = useState<'UAZAPI' | 'EVOLUTION' | 'MANUAL'>('UAZAPI');
   const [qrConn, setQrConn] = useState<Conn | null>(null);
+  const [resetting, setResetting] = useState<string | null>(null);
 
   // Import por token (avançado / discreto)
   const [tokenOpen, setTokenOpen] = useState(false);
@@ -288,6 +289,27 @@ export function Numbers() {
     fetcher('/numbers').then(setItems).finally(() => setLoading(false));
   };
   useEffect(load, []);
+
+  /**
+   * Logout no provider e QR novo em seguida.
+   *
+   * Instância derrubada pelo WhatsApp (401) guarda credencial morta: o Baileys
+   * fica tentando ressuscitar a sessão antiga em vez de abrir um pareamento
+   * limpo, e o número trava em "Aguardando QR" por mais que se escaneie. O
+   * logout apaga essa credencial. Só faz sentido em número que já não está no
+   * ar — por isso o botão não aparece em CONNECTED.
+   */
+  const resetSession = async (c: Conn) => {
+    setResetting(c.id);
+    try {
+      await poster(`/numbers/${c.id}/disconnect`, {});
+      setQrConn(c);
+    } catch (e: any) {
+      alert(`Falha ao resetar a sessão: ${e.message}`);
+    } finally {
+      setResetting(null);
+    }
+  };
 
   const create = async () => {
     if (!name.trim()) { alert('Dê um nome ao número'); return; }
@@ -479,6 +501,19 @@ export function Numbers() {
                     {c.provider !== 'MANUAL' && (
                       <Button variant={c.status === 'CONNECTED' ? 'outline' : 'default'} size="sm" onClick={() => setQrConn(c)}>
                         <QrCode className="h-4 w-4 mr-1" /> {c.status === 'CONNECTED' ? 'Reconectar' : 'Conectar'}
+                      </Button>
+                    )}
+                    {c.provider !== 'MANUAL' && c.status !== 'CONNECTED' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => resetSession(c)}
+                        disabled={resetting === c.id}
+                        title="Apaga a credencial morta da sessão e abre um QR limpo"
+                      >
+                        {resetting === c.id
+                          ? <Loader2 className="h-4 w-4 animate-spin" />
+                          : <RefreshCw className="h-4 w-4" />}
                       </Button>
                     )}
                     {c.provider !== 'MANUAL' && <ResyncWebhookButton id={c.id} />}
