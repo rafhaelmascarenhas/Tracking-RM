@@ -81,13 +81,29 @@ numbersRouter.get('/', async (req: Request, res: Response) => {
   res.json(live);
 });
 
+// Mesmo tratamento da listagem: estado ao vivo, não a coluna do banco.
 numbersRouter.get('/:id', async (req: Request, res: Response) => {
   const conn = await prisma.whatsappConnection.findFirst({
     where: { id: req.params.id, workspace_id: req.workspaceId! },
     include: { workspace: true },
   });
   if (!conn) return res.status(404).json({ error: 'Not found' });
-  res.json(conn);
+  if (conn.provider === 'MANUAL') return res.json({ ...conn, status_stale: false });
+
+  try {
+    const status = await providerLiveState(req.workspaceId!, {
+      provider: conn.provider,
+      session_name: conn.session_name,
+      uazapi_token: conn.uazapi_token,
+    });
+    if (status !== conn.status) {
+      await prisma.whatsappConnection.update({ where: { id: conn.id }, data: { status } });
+    }
+    res.json({ ...conn, status, status_stale: false });
+  } catch (e: any) {
+    console.warn(`[numbers] estado ao vivo de "${conn.session_name}" falhou: ${e.message}`);
+    res.json({ ...conn, status_stale: true });
+  }
 });
 
 /**

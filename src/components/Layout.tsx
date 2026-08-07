@@ -119,13 +119,15 @@ export function Layout() {
           <div className="flex items-center gap-4">
              <WorkspaceSwitcher />
 
-             <div className="flex items-center gap-2 bg-green-50/80 text-green-700 px-3 py-1.5 rounded-full text-xs font-semibold border border-green-200/50 shadow-sm">
-                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
-                Conectado
-             </div>
-
+             {/*
+               Aqui havia um selo verde "Conectado" fixo no HTML, sem nenhum dado
+               por trás. Ficava aceso em todas as telas, inclusive com todos os
+               números fora do ar, e era lido como o status do número aberto.
+               Removido: status de conexão só aparece onde é apurado de verdade
+               (lista de Números e detalhe do número).
+             */}
              <div className="h-5 w-[1px] bg-gray-200"></div>
-             
+
              <div className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity">
                 <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-gray-200 to-gray-300 border border-gray-200/50 flex items-center justify-center text-gray-600 text-[10px] font-bold shadow-sm">
                   User

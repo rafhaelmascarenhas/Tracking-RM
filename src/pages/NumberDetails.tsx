@@ -15,6 +15,7 @@ type Conn = {
   session_name: string;
   phone_number: string | null;
   status: string;
+  status_stale?: boolean;
   workspace?: {
     id: string;
     meta_pixel_id?: string | null;
@@ -56,8 +57,12 @@ export function NumberDetails() {
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-3xl font-bold tracking-tight">{conn.session_name}</h1>
-            {conn.status === 'CONNECTED'
-              ? <Badge className="bg-emerald-500">Conectado</Badge>
+            {/* CONNECTING é um terceiro estado real (QR esperando leitura) e
+                não pode ser achatado em "Desconectado" nem em "Conectado". */}
+            {conn.status_stale
+              ? <Badge variant="outline" className="text-muted-foreground" title="Provider não respondeu; último estado conhecido">Não confirmado</Badge>
+              : conn.status === 'CONNECTED' ? <Badge className="bg-emerald-500">Conectado</Badge>
+              : conn.status === 'CONNECTING' ? <Badge className="bg-amber-500">Conectando</Badge>
               : <Badge variant="destructive">Desconectado</Badge>}
           </div>
           <p className="text-muted-foreground mt-1">{conn.phone_number || 'Sem telefone'}</p>
