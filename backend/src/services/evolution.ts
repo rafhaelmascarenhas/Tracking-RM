@@ -335,9 +335,22 @@ export async function fetchGroupJidByInvite(
 export async function connectInstance(cfg: EvolutionConfig, name: string) {
   const data = await call(cfg, 'GET', `/instance/connect/${encodeURIComponent(name)}`);
   const inst = await fetchInstance(cfg, name).catch(() => null);
+  const qrcode = pickQrcode(data);
+
+  // NÃO usar inst.connectionStatus como status: é a linha do banco interno do
+  // Evolution, que fica congelada em "open" depois de uma queda que ele não
+  // registrou. O tracking-adler estava assim desde 22/07 — o modal anunciava
+  // "Conectado!" com a sessão morta, enquanto o socket dizia connecting.
+  // A verdade está no /instance/connectionState.
+  const live = await getConnectionState(cfg, name).catch(() => null);
+
+  // QR na resposta é prova de que NÃO está conectado: instância no ar não emite
+  // código de pareamento. Vale contra qualquer estado otimista das outras fontes.
+  const status = qrcode ? 'CONNECTING' : (live ?? normalizeState(data?.instance?.state));
+
   return {
-    status: normalizeState(inst?.connectionStatus ?? (data?.instance?.state)),
-    qrcode: pickQrcode(data),
+    status,
+    qrcode,
     phone: inst ? pickPhone(inst) : null,
     profileName: inst ? pickProfileName(inst) : null,
   };
