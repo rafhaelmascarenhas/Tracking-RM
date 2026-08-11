@@ -204,16 +204,19 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
           await prisma.message.create({
             data: { lead_id: existingLead.id, direction: 'OUTBOUND', content: text },
           });
+          // Termo-chave da etapa PRIMEIRO: atendente manda a frase → move o lead pra
+          // etapa e dispara o evento dela (dedupe 1x por lead). Modelo Tintim.
+          // A ordem importa: o gatilho de frase recebe o que a etapa já mandou e
+          // pula esses eventos, senão o mesmo Purchase vai 2x pro Meta.
+          const stage = await applyKeywordStage({ workspaceId, leadId: existingLead.id, text });
           await evaluateTriggers({
             workspaceId,
             leadId: existingLead.id,
             text,
             direction: 'attendant',
             hasAttribution: !!(existingLead.fbclid || existingLead.click_time || existingLead.ctwa_clid),
+            skipEventNames: stage?.firedEventNames,
           });
-          // Termo-chave da etapa: atendente manda a frase → move o lead pra etapa
-          // e dispara o evento dela (dedupe 1x por lead). Modelo Tintim.
-          await applyKeywordStage({ workspaceId, leadId: existingLead.id, text });
         }
       }
       return res.json({ ok: true, handled: 'outbound' });

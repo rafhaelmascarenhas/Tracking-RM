@@ -18,7 +18,7 @@ export async function applyStageToLead(opts: {
   stageId: string;
   overrideValue?: number | null;
   mode: 'auto' | 'manual';
-}): Promise<{ moved: boolean; fired: number }> {
+}): Promise<{ moved: boolean; fired: number; firedEventNames: string[] }> {
   const { workspaceId, leadId, stageId, overrideValue, mode } = opts;
 
   await prisma.lead.update({
@@ -43,7 +43,7 @@ export async function applyStageToLead(opts: {
     });
   }
 
-  if (alreadyFired) return { moved: true, fired: 0 };
+  if (alreadyFired) return { moved: true, fired: 0, firedEventNames: [] };
 
   const stage = await prisma.journeyStage.findUnique({ where: { id: stageId } });
   const allEvents = await prisma.conversionEvent.findMany({ where: { journey_stage_id: stageId } });
@@ -67,7 +67,7 @@ export async function applyStageToLead(opts: {
       journeyStageId: stageId,
     });
   }
-  return { moved: true, fired: events.length };
+  return { moved: true, fired: events.length, firedEventNames: events.map((e) => e.event_name) };
 }
 
 /**
@@ -111,7 +111,7 @@ export async function applyKeywordStage(opts: {
   workspaceId: string;
   leadId: string;
   text: string;
-}): Promise<{ id: string; name: string } | null> {
+}): Promise<{ id: string; name: string; firedEventNames: string[] } | null> {
   const { workspaceId, leadId, text } = opts;
   const lower = normalizeForMatch(text);
   if (!lower.trim()) return null;
@@ -140,5 +140,5 @@ export async function applyKeywordStage(opts: {
     mode: 'auto',
   });
   console.log(`[stage] keyword move lead=${leadId} -> "${match.name}" fired=${r.fired}`);
-  return { id: match.id, name: match.name };
+  return { id: match.id, name: match.name, firedEventNames: r.firedEventNames };
 }

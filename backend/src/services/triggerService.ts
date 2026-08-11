@@ -54,8 +54,16 @@ export async function evaluateTriggers(opts: {
   text: string;
   direction: 'lead' | 'attendant';
   hasAttribution: boolean;
+  /**
+   * Eventos que a etapa da jornada JÁ disparou por esta mesma mensagem. Sem isso,
+   * uma frase que é ao mesmo tempo termo-chave da etapa e frase de gatilho manda
+   * o mesmo Purchase duas vezes (dedupes ficam em tabelas separadas: StageFired
+   * vs ConversionFired) e o Meta conta a conversão em dobro.
+   */
+  skipEventNames?: string[];
 }) {
-  const { workspaceId, leadId, text, direction, hasAttribution } = opts;
+  const { workspaceId, leadId, text, direction, hasAttribution, skipEventNames } = opts;
+  const skip = new Set(skipEventNames || []);
 
   const triggers = await prisma.conversionTrigger.findMany({
     where: { workspace_id: workspaceId, active: true },
@@ -78,6 +86,12 @@ export async function evaluateTriggers(opts: {
   for (const t of triggers) {
     // Filtro de direção (quem manda a frase)
     if (t.direction !== 'any' && t.direction !== direction) continue;
+
+    // Etapa da jornada já mandou esse evento por esta mensagem — não duplica.
+    if (skip.has(t.event_name)) {
+      console.log(`[trigger] SKIP ${t.event_name} (${t.name}) lead=${leadId} — etapa já disparou`);
+      continue;
+    }
 
     // Escopo: rotador específico > qualquer rotador > todos
     if (t.rotator_id) {
