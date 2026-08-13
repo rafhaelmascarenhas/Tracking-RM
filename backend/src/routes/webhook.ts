@@ -262,8 +262,11 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
       }
     }
 
-    // Atribuição fina do rotador (fbclid/ip/ua) — só se ainda não casado
-    if (!lead.fbclid && !lead.click_time) {
+    // Atribuição fina do rotador (fbclid/ip/ua) — se ainda não casado, OU se a msg
+    // traz token explícito: lead recorrente que clica de novo num anúncio tem
+    // click_time antigo e ficava pra sempre sem re-atribuir (clique novo pending).
+    const hasRotatorToken = /\[[a-f0-9]{6,10}\]/i.test(text || '');
+    if (hasRotatorToken || (!lead.fbclid && !lead.click_time)) {
       const click = await matchRotatorClick(connection.id, lead.id, text || '', { clickToChat: isClickToChat });
       if (click) {
         lead = await prisma.lead.update({
