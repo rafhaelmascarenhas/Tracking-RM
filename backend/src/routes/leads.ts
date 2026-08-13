@@ -9,6 +9,18 @@ const LIMIT_MAX = 200;
 const LIMIT_DEFAULT = 50;
 const META_SOURCES = ['meta', 'Meta', 'facebook', 'Facebook', 'instagram', 'Instagram', 'fb', 'ig'];
 
+// Origem "rotador" = existe RotatorClick casado com o lead. Não dá pra usar
+// fbclid != null: clique sem fbclid (bio, orgânico, link sem parâmetro) some da
+// lista, e lead de CTWA com fbclid aparecia como se fosse do rotador.
+async function rotatorLeadIds(workspaceId: string): Promise<string[]> {
+  const clicks = await prisma.rotatorClick.findMany({
+    where: { lead_id: { not: null }, rotator: { workspace_id: workspaceId } },
+    select: { lead_id: true },
+    distinct: ['lead_id'],
+  });
+  return clicks.map((c) => c.lead_id!).filter(Boolean);
+}
+
 leadsRouter.get('/', async (req: Request, res: Response) => {
   const page  = Math.max(1, parseInt(req.query.page  as string) || 1);
   const limit = Math.min(LIMIT_MAX, Math.max(1, parseInt(req.query.limit as string) || LIMIT_DEFAULT));
@@ -17,6 +29,10 @@ leadsRouter.get('/', async (req: Request, res: Response) => {
   const dateTo   = (req.query.dateTo    as string) || '';
   const origin   = (req.query.origin    as string) || '';
   const event    = (req.query.event     as string) || '';
+
+  // Ids de leads vindos do rotador — usado no filtro de origem, nos stats e na flag por lead.
+  const rotIds = await rotatorLeadIds(req.workspaceId!);
+  const rotSet = new Set(rotIds);
 
   // Where com filtros da tabela (busca + datas + origem rotador/ctwa + evento disparado)
   const where: any = { workspace_id: req.workspaceId! };
@@ -31,7 +47,9 @@ leadsRouter.get('/', async (req: Request, res: Response) => {
     if (dateFrom) where.created_at.gte = new Date(dateFrom);
     if (dateTo)   where.created_at.lte = new Date(dateTo + 'T23:59:59');
   }
-  if (origin === 'rotator') where.fbclid = { not: null };
+  if (origin === 'rotator') {
+    where.AND = [...(where.AND ?? []), { id: { in: rotIds } }];
+  }
   if (origin === 'ctwa') where.ctwa_clid = { not: null };
   if (event && event !== 'all') {
     const fires = await prisma.pixelFire.findMany({
@@ -39,7 +57,7 @@ leadsRouter.get('/', async (req: Request, res: Response) => {
       select: { lead_id: true },
       distinct: ['lead_id'],
     });
-    where.id = { in: fires.map((f) => f.lead_id) };
+    where.AND = [...(where.AND ?? []), { id: { in: fires.map((f) => f.lead_id) } }];
   }
 
   // Stats globais (sem filtros de busca/data — visão geral permanente)
@@ -53,11 +71,12 @@ leadsRouter.get('/', async (req: Request, res: Response) => {
           { fbclid: { not: null } },
           { ctwa_clid: { not: null } },
           { utm_source: { in: META_SOURCES } },
+          { id: { in: rotIds } },
         ],
       },
     }),
     prisma.lead.count({
-      where: { ...statsBase, fbclid: null, ctwa_clid: null, utm_source: null },
+      where: { ...statsBase, fbclid: null, ctwa_clid: null, utm_source: null, id: { notIn: rotIds } },
     }),
     prisma.lead.count({ where }),
     prisma.lead.findMany({
@@ -84,7 +103,11 @@ leadsRouter.get('/', async (req: Request, res: Response) => {
       })
     : [];
   const valueMap = new Map(valueGroups.map((g) => [g.lead_id, g._sum.value ?? 0]));
-  const leadsWithValue = leads.map((l) => ({ ...l, conversion_value: valueMap.get(l.id) ?? 0 }));
+  const leadsWithValue = leads.map((l) => ({
+    ...l,
+    conversion_value: valueMap.get(l.id) ?? 0,
+    from_rotator: rotSet.has(l.id),
+  }));
 
   res.json({
     leads: leadsWithValue,
@@ -113,7 +136,10 @@ leadsRouter.get('/export', async (req: Request, res: Response) => {
     if (dateFrom) where.created_at.gte = new Date(dateFrom);
     if (dateTo)   where.created_at.lte = new Date(dateTo + 'T23:59:59');
   }
-  if (origin === 'rotator') where.fbclid = { not: null };
+  const rotSet = new Set(await rotatorLeadIds(req.workspaceId!));
+  if (origin === 'rotator') {
+    where.AND = [...(where.AND ?? []), { id: { in: [...rotSet] } }];
+  }
   if (origin === 'ctwa') where.ctwa_clid = { not: null };
   if (event && event !== 'all') {
     const fires = await prisma.pixelFire.findMany({
@@ -121,7 +147,7 @@ leadsRouter.get('/export', async (req: Request, res: Response) => {
       select: { lead_id: true },
       distinct: ['lead_id'],
     });
-    where.id = { in: fires.map((f) => f.lead_id) };
+    where.AND = [...(where.AND ?? []), { id: { in: fires.map((f) => f.lead_id) } }];
   }
 
   const leads = await prisma.lead.findMany({
@@ -146,7 +172,7 @@ leadsRouter.get('/export', async (req: Request, res: Response) => {
   const valueMap = new Map(valueGroups.map((g) => [g.lead_id, g._sum.value ?? 0]));
 
   const origem = (l: typeof leads[number]) =>
-    l.fbclid ? 'Rotador' : l.ctwa_clid ? 'Meta CTWA' : l.utm_source || 'Não rastreada';
+    rotSet.has(l.id) ? 'Rotador' : l.ctwa_clid ? 'Meta CTWA' : l.fbclid ? 'Meta' : l.utm_source || 'Não rastreada';
   const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const header = ['nome', 'telefone', 'origem', 'etapa', 'numero_atendimento', 'utm_source', 'utm_campaign', 'valor_conversao', 'criado_em', 'ultima_mensagem'];
   const rows = leads.map((l) => [

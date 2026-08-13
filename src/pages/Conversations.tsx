@@ -19,6 +19,7 @@ type Lead = {
   utm_content?: string | null;
   fbclid?: string | null;
   ctwa_clid?: string | null;
+  from_rotator?: boolean;
   created_at: string;
   conversion_value?: number;
   journeyStage?: { name: string } | null;
@@ -27,8 +28,9 @@ type Lead = {
 };
 
 function OriginBadge({ l }: { l: Lead }) {
-  if (l.fbclid) return <Badge className="bg-[#0866FF] text-white">Meta ✓</Badge>;
+  if (l.from_rotator) return <Badge className="bg-[#0866FF] text-white">Rotador ✓</Badge>;
   if (l.ctwa_clid) return <Badge className="bg-[#0866FF] text-white">Meta CTWA ✓</Badge>;
+  if (l.fbclid) return <Badge className="bg-[#0866FF] text-white">Meta ✓</Badge>;
   if (l.utm_source) {
     const src = l.utm_source.toLowerCase();
     if (src.includes('google') || src.includes('adwords'))
@@ -190,14 +192,14 @@ export function Conversations() {
     }
   };
 
-  const isMeta = (l: Lead) => !!l.fbclid || !!l.ctwa_clid || /meta|facebook|instagram|fb|ig/i.test(l.utm_source || '');
+  const isMeta = (l: Lead) => !!l.from_rotator || !!l.fbclid || !!l.ctwa_clid || /meta|facebook|instagram|fb|ig/i.test(l.utm_source || '');
   const isGoogle = (l: Lead) => /google|adwords|gclid/i.test(l.utm_source || '');
 
   // Filtro de origem aplicado client-side na página atual
   const filtered = leads.filter((l) => {
     if (originFilter === 'meta' && !isMeta(l)) return false;
     if (originFilter === 'google' && !isGoogle(l)) return false;
-    if (originFilter === 'untracked' && (l.utm_source || l.fbclid || l.ctwa_clid)) return false;
+    if (originFilter === 'untracked' && (l.utm_source || l.fbclid || l.ctwa_clid || l.from_rotator)) return false;
     // rotator/ctwa já filtrados no backend (buildUrl) — sem filtro client-side extra aqui.
     return true;
   });
