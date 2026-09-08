@@ -20,6 +20,10 @@ model Workspace {
   // Opcional: se vazio, tenta o meta_capi_token (system user costuma ter ads_read).
   meta_ads_token    String?
   google_ads_id     String?
+  // Mapa JSON evento->conversionAction ID do Google Ads, ex:
+  // {"Purchase":"987654321","Lead":"123456789"}. O ID sai da URL da Conversion
+  // Action no painel (ctId=...). Credenciais (dev token/OAuth) ficam em env.
+  google_conversion_actions String?
   gtm_id            String?
   webhook_url       String?
   // uazapi — configurado 1x, reutilizado por todos os números do workspace
@@ -77,6 +81,11 @@ model Lead {
   current_journey_stage_id String?
   // Atribuição fina (Fase 2 — rotador)
   fbclid                 String?
+  // Atribuição Google. gclid = web; wbraid/gbraid = iOS/app (PMax, Demand Gen),
+  // onde o Google não entrega gclid. São mutuamente exclusivos no upload.
+  gclid                  String?
+  wbraid                 String?
+  gbraid                 String?
   click_ip               String?
   click_user_agent       String?
   click_time             DateTime?
@@ -284,6 +293,8 @@ model RotatorClick {
   token         String?   @unique
   fbclid        String?
   gclid         String?
+  wbraid        String?
+  gbraid        String?
   utm_source    String?
   utm_medium    String?
   utm_campaign  String?
@@ -400,6 +411,8 @@ model GroupClick {
   target_id  String
   fbclid     String?
   gclid      String?
+  wbraid     String?
+  gbraid     String?
   utm_source String?
   utm_medium String?
   utm_campaign String?

@@ -115,6 +115,9 @@ async function handleRotator(req: Request, res: Response, short_code: string, fo
         token,
         fbclid: (req.query.fbclid as string) || null,
         gclid: (req.query.gclid as string) || null,
+        // iOS/PMax nao entregam gclid — vem wbraid (web) ou gbraid (app).
+        wbraid: (req.query.wbraid as string) || null,
+        gbraid: (req.query.gbraid as string) || null,
         utm_source: q.utm_source || rotator.utm_source || null,
         utm_medium: q.utm_medium || rotator.utm_medium || null,
         utm_campaign: q.utm_campaign || rotator.utm_campaign || null,

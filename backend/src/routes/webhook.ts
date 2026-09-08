@@ -266,13 +266,16 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
     // traz token explícito: lead recorrente que clica de novo num anúncio tem
     // click_time antigo e ficava pra sempre sem re-atribuir (clique novo pending).
     const hasRotatorToken = /\[[a-f0-9]{6,10}\]/i.test(text || '');
-    if (hasRotatorToken || (!lead.fbclid && !lead.click_time)) {
+    if (hasRotatorToken || (!lead.fbclid && !lead.gclid && !lead.click_time)) {
       const click = await matchRotatorClick(connection.id, lead.id, text || '', { clickToChat: isClickToChat });
       if (click) {
         lead = await prisma.lead.update({
           where: { id: lead.id },
           data: {
             fbclid: click.fbclid,
+            gclid: click.gclid,
+            wbraid: click.wbraid,
+            gbraid: click.gbraid,
             click_ip: click.ip_address,
             click_user_agent: click.user_agent,
             click_time: click.created_at,

@@ -15,6 +15,7 @@ type Workspace = {
   meta_waba_id?: string | null;
   meta_ads_token?: string | null;
   google_ads_id?: string | null;
+  google_conversion_actions?: string | null;
   gtm_id?: string | null;
   webhook_url?: string | null;
   uazapi_url?: string | null;
@@ -153,12 +154,24 @@ export function Settings() {
       <Card className="max-w-xl">
         <CardHeader>
           <CardTitle>Google Ads</CardTitle>
-          <CardDescription>Customer ID para offline conversions.</CardDescription>
+          <CardDescription>Customer ID e mapa de Conversion Actions para offline conversions.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
             <Label>Customer ID</Label>
             <Input value={ws.google_ads_id || ''} onChange={(e) => update('google_ads_id', e.target.value)} placeholder="123-456-7890" />
+          </div>
+          <div className="space-y-2 mt-4">
+            <Label>Conversion Actions (JSON)</Label>
+            <Input
+              value={ws.google_conversion_actions || ''}
+              onChange={(e) => update('google_conversion_actions', e.target.value)}
+              placeholder={'{"Purchase":"987654321","Lead":"123456789"}'}
+              className="font-mono text-xs"
+            />
+            <p className="text-xs text-muted-foreground">
+              Nome do evento → ID da Conversion Action (sai do <code>ctId=</code> na URL do painel do Google Ads).
+            </p>
           </div>
         </CardContent>
       </Card>

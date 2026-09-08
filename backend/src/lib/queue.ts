@@ -1,4 +1,5 @@
 import { fireMetaCapi } from '../services/metaCapi';
+import { fireGoogleAdsConversion, resolveConversionActionId } from '../services/googleAds';
 import { prisma } from './prisma';
 
 type CapiJobData = {
@@ -13,6 +14,7 @@ type CapiJobData = {
 };
 
 async function processCapiJob(data: CapiJobData) {
+  if (data.platform === 'GOOGLE') return processGoogleJob(data);
   if (data.platform !== 'META') return;
 
   const workspace = await prisma.workspace.findUnique({ where: { id: data.workspaceId } });
@@ -71,6 +73,62 @@ async function processCapiJob(data: CapiJobData) {
       whatsapp_connection_id: lead.whatsapp_connection_id,
     },
   }).catch((e) => console.error('[pixelFire log]', e?.message));
+}
+
+/**
+ * Import de conversão offline pro Google Ads. Espelha processCapiJob, mas a
+ * atribuição vem de gclid/wbraid/gbraid gravados no clique do rotador.
+ */
+async function processGoogleJob(data: CapiJobData) {
+  const workspace = await prisma.workspace.findUnique({ where: { id: data.workspaceId } });
+  if (!workspace?.google_ads_id) return;
+
+  const conversionActionId = resolveConversionActionId(workspace.google_conversion_actions, data.eventName);
+  if (!conversionActionId) {
+    console.warn(`[googleAds] evento "${data.eventName}" sem conversionAction mapeada no workspace`);
+    return;
+  }
+
+  const lead = await prisma.lead.findUnique({ where: { id: data.leadId } });
+  if (!lead) return;
+
+  let status = 'error';
+  let response = '';
+  try {
+    const r = await fireGoogleAdsConversion({
+      customerId: workspace.google_ads_id,
+      conversionActionId,
+      gclid: lead.gclid,
+      wbraid: lead.wbraid,
+      gbraid: lead.gbraid,
+      clickTimeMs: lead.click_time ? lead.click_time.getTime() : null,
+      eventTimeMs: data.eventTimeMs,
+      value: data.value,
+      currency: data.currency,
+      // Mesmo par lead+evento reenviado nao vira conversao dupla no Google.
+      orderId: `${lead.id}:${data.eventName}`,
+    });
+    status = r.ok ? 'success' : 'error';
+    response = r.response;
+  } catch (e: any) {
+    response = String(e?.message || e).slice(0, 500);
+  }
+
+  await prisma.pixelFire.create({
+    data: {
+      workspace_id: data.workspaceId,
+      lead_id: data.leadId,
+      journey_stage_id: data.journeyStageId ?? null,
+      platform: 'GOOGLE',
+      event_name: data.eventName,
+      action_source: 'offline_upload',
+      value: data.value ?? null,
+      currency: data.currency ?? null,
+      status,
+      response,
+      whatsapp_connection_id: lead.whatsapp_connection_id,
+    },
+  }).catch((e) => console.error('[pixelFire log google]', e?.message));
 }
 
 // In dev (no Redis): fire inline. In prod: use BullMQ queue.

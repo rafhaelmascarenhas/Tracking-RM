@@ -43,6 +43,8 @@ async function handleGroupRotator(
         target_id: target.id,
         fbclid: q.fbclid || null,
         gclid: q.gclid || null,
+        wbraid: q.wbraid || null,
+        gbraid: q.gbraid || null,
         utm_source: q.utm_source || rotator.utm_source || null,
         utm_medium: q.utm_medium || rotator.utm_medium || null,
         utm_campaign: q.utm_campaign || rotator.utm_campaign || null,
