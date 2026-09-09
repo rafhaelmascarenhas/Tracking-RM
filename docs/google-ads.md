@@ -36,6 +36,10 @@ anexa `gclid` na URL de destino e não há o que atribuir.
 
 ## 2. Botão do WhatsApp
 
+> Loja é Shopify (Galeria de Boleiro). Use **`docs/shopify-gtag.liquid`** —
+> versão pronta, colada em `layout/theme.liquid` antes de `</head>`. O snippet
+> genérico abaixo fica de referência.
+
 O botão aponta pro rotador, nunca direto pro `wa.me`. O clique pode acontecer
 numa página interna, então o identificador é guardado no primeiro pageview e
 lido de lá.

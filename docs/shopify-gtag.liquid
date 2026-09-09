@@ -1,0 +1,113 @@
+{%- comment -%}
+  tracking-rm — Google Ads + rotador de WhatsApp (Galeria de Boleiro)
+
+  ONDE COLAR: Loja virtual > Temas > ... > Editar código > layout/theme.liquid,
+  imediatamente ANTES de </head>.
+
+  NAO usar "Eventos do cliente" (custom pixel) pra isto. Aquele sandbox roda num
+  iframe isolado e nao enxerga o DOM da loja, entao nao consegue reescrever o
+  href dos botoes de WhatsApp. Precisa ser no theme.liquid mesmo.
+
+  PREENCHER as 3 constantes abaixo antes de salvar.
+{%- endcomment -%}
+
+<script>
+  window.TRK = {
+    // Ads > Ferramentas > Gerenciador de dados > Tags. NAO e o Customer ID.
+    AW_ID: 'AW-XXXXXXXXXX',
+    // Rótulo da conversão "Clique WhatsApp" (formato AW-XXXX/AbCdEfGh123).
+    // Deixe vazio pra nao disparar a conversao de clique.
+    AW_CLICK_LABEL: '',
+    // Link do rotador no tracking-rm, sem query string.
+    ROTATOR: 'https://SEU_DOMINIO/r/SLUG'
+  };
+</script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=AW-XXXXXXXXXX"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', window.TRK.AW_ID);
+</script>
+
+<script>
+(function () {
+  var KEYS = ['gclid', 'wbraid', 'gbraid', 'utm_source', 'utm_medium',
+              'utm_campaign', 'utm_term', 'utm_content'];
+  var STORE = 'trk_click';
+  var MAX_AGE = 90 * 86400000; // janela que o Google aceita no import offline
+
+  // --- 1. Persiste o identificador do clique -------------------------------
+  // O visitante costuma navegar várias páginas antes de chamar no WhatsApp.
+  // Sem guardar, o gclid morre na primeira troca de página.
+  var url = new URLSearchParams(location.search);
+  var saved = {};
+  try { saved = JSON.parse(localStorage.getItem(STORE) || '{}'); } catch (e) {}
+
+  var fresh = false;
+  KEYS.forEach(function (k) {
+    var v = url.get(k);
+    if (v) { fresh = true; }
+  });
+  // Clique novo zera o anterior por inteiro. Mesclar gclid de hoje com
+  // utm_campaign da semana passada credita a campanha errada.
+  if (fresh) {
+    saved = {};
+    KEYS.forEach(function (k) {
+      var v = url.get(k);
+      if (v) saved[k] = v;
+    });
+    saved._ts = Date.now();
+    try { localStorage.setItem(STORE, JSON.stringify(saved)); } catch (e) {}
+  }
+  if (saved._ts && Date.now() - saved._ts > MAX_AGE) {
+    saved = {};
+    try { localStorage.removeItem(STORE); } catch (e) {}
+  }
+
+  var qs = new URLSearchParams();
+  KEYS.forEach(function (k) { if (saved[k]) qs.set(k, saved[k]); });
+  var suffix = qs.toString() ? '?' + qs.toString() : '';
+
+  // --- 2. Reescreve os botões de WhatsApp ----------------------------------
+  // Aponta pro rotador em vez do wa.me direto. Varre por destino em vez de por
+  // classe: no Shopify os botões vêm de tema e de apps, cada um com o seu
+  // markup, e uma classe fixa não pegaria todos.
+  var WA = /(?:wa\.me|api\.whatsapp\.com|web\.whatsapp\.com)/i;
+
+  function rewrite(root) {
+    var links = (root || document).querySelectorAll('a[href]');
+    Array.prototype.forEach.call(links, function (a) {
+      if (a.dataset.trkDone) return;
+      var isWa = WA.test(a.getAttribute('href') || '');
+      var isTagged = a.classList.contains('btn-wpp');
+      if (!isWa && !isTagged) return;
+
+      a.dataset.trkDone = '1';
+      a.href = window.TRK.ROTATOR + suffix;
+      a.addEventListener('click', function () {
+        if (typeof gtag === 'function' && window.TRK.AW_CLICK_LABEL) {
+          gtag('event', 'conversion', { send_to: window.TRK.AW_CLICK_LABEL });
+        }
+      });
+    });
+  }
+
+  function start() {
+    rewrite(document);
+    // Botão flutuante de app costuma entrar no DOM depois do load, e seções do
+    // tema remontam ao navegar. Sem observar, esses botões ficam sem rotador.
+    if (window.MutationObserver) {
+      new MutationObserver(function () { rewrite(document); })
+        .observe(document.body, { childList: true, subtree: true });
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start);
+  } else {
+    start();
+  }
+})();
+</script>
