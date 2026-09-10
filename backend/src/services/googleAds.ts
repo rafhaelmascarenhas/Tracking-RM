@@ -16,7 +16,9 @@ import crypto from 'crypto';
  *  - gclid, wbraid e gbraid são MUTUAMENTE EXCLUSIVOS no payload.
  */
 
-const API_VERSION = 'v18';
+// v23 confirmado vivo em set/2026 (v18 e anteriores foram desativadas -> 404).
+// Alinhado com o painel adagency, que usa a mesma versao no mesmo host.
+const API_VERSION = 'v23';
 const OAUTH_URL = 'https://oauth2.googleapis.com/token';
 
 // Google recusa clique mais velho que isso (equivalente aos 7 dias da Meta).
