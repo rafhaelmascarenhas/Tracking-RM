@@ -14,16 +14,16 @@
 <script>
   window.TRK = {
     // Ads > Ferramentas > Gerenciador de dados > Tags. NAO e o Customer ID.
-    AW_ID: 'AW-XXXXXXXXXX',
+    AW_ID: 'AW-17190081940',
     // Rótulo da conversão "Clique WhatsApp" (formato AW-XXXX/AbCdEfGh123).
     // Deixe vazio pra nao disparar a conversao de clique.
     AW_CLICK_LABEL: '',
     // Link do rotador no tracking-rm, sem query string.
-    ROTATOR: 'http://187.127.11.117:3010/r/5cbd6da9'
+    ROTATOR: 'http://187.127.11.117:3010/j/bba4852d'
   };
 </script>
 
-<script async src="https://www.googletagmanager.com/gtag/js?id=AW-XXXXXXXXXX"></script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=AW-17190081940"></script>
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
@@ -42,6 +42,20 @@
   // O visitante costuma navegar várias páginas antes de chamar no WhatsApp.
   // Sem guardar, o gclid morre na primeira troca de página.
   var url = new URLSearchParams(location.search);
+  // Classificacao de origem: se a URL nao traz utm_source nem id de clique,
+  // deriva do referrer. Todo lead via botao = "site/<canal>".
+  if (!url.get('utm_source') && !url.get('gclid') && !url.get('fbclid') &&
+      !url.get('wbraid') && !url.get('gbraid')) {
+    var ref = document.referrer || '';
+    var canal = '';
+    if (/chatgpt\.com|chat\.openai\.com/i.test(ref)) canal = 'site-chatgpt';
+    else if (/google\./i.test(ref)) canal = 'site-google-organico';
+    else if (/instagram\.com|facebook\.com|fb\.com/i.test(ref)) canal = 'site-social-organico';
+    else if (/bing\.com/i.test(ref)) canal = 'site-bing';
+    else if (ref && ref.indexOf(location.hostname) === -1) canal = 'site-referral';
+    else if (!ref) canal = 'site-direto';
+    if (canal) url.set('utm_source', canal);
+  }
   var saved = {};
   try { saved = JSON.parse(localStorage.getItem(STORE) || '{}'); } catch (e) {}
 

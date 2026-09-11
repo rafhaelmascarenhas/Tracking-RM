@@ -2,13 +2,31 @@
 
 Conta: **Prime Nucleo Odontologia (Nova)** — Customer ID `725-952-3207` (`7259523207`).
 
+> **set/2026 — MIGRADO PRA DATA MANAGER API.** O Google bloqueou
+> `UploadClickConversions` pra integrações novas ("limited to existing users").
+> O upload agora é `POST https://datamanager.googleapis.com/v1/events:ingest`:
+> sem developer token, escopo OAuth `auth/datamanager` (refresh token teve que
+> ser reemitido), `operatingAccount` = conta dona da action (a filha),
+> MCC vai em `loginAccount`, `eventTimestamp` RFC-3339, API habilitada no
+> projeto Cloud do client OAuth. Ver `services/googleAds.ts`.
+
 Fluxo igual ao do Meta, trocando `fbclid` por `gclid`:
 
 ```
-anúncio Google → site (?gclid=...) → botão WhatsApp → /r/<slug>?gclid=...
+anúncio Google → site (?gclid=...) → botão WhatsApp → /j/<short_code>?gclid=...
   → RotatorClick grava gclid → lead manda msg com [token] → match lead↔click
-  → etapa/gatilho converte → uploadClickConversions manda de volta pro Google
+  → etapa/gatilho converte → Data Manager API manda de volta pro Google
 ```
+
+Rotadores em uso (Galeria = workspace `demo-workspace`):
+- `5cbd6da9` — pool de 4 números (links de anúncio Meta apontam direto)
+- `bba4852d` — **botão do site**, só o 553798354497, msg do cupom. O snippet
+  do site também classifica origem sem anúncio via referrer → utm_source
+  (`site-direto`, `site-chatgpt`, `site-google-organico`, `site-social-organico`,
+  `site-bing`, `site-referral`).
+
+Conversion actions offline (tipo UPLOAD_CLICKS, criadas 10/09):
+Lead `7758023237` · Compra `7758023240`. As de site (WEBPAGE) NÃO servem.
 
 `wbraid` / `gbraid` substituem o `gclid` em tráfego iOS e campanhas de app
 (Performance Max, Demand Gen). São capturados junto e são mutuamente exclusivos

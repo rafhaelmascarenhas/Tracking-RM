@@ -6,27 +6,36 @@ import crypto from 'crypto';
  * Fluxo: clique no anúncio traz gclid (ou wbraid/gbraid em iOS/app) na URL do
  * rotador -> gravado no RotatorClick -> casado com o lead pelo token da mensagem
  * -> quando o lead converte (etapa/gatilho), mandamos a conversão de volta pro
- * Google com aquele identificador. É o "Import de conversões offline".
+ * Google com aquele identificador.
  *
- * Diferenças relevantes vs Meta:
- *  - Não existe pixel/token por workspace. Credenciais são OAuth de app + developer
- *    token, iguais pra todas as contas -> ficam em env, não no banco.
- *  - Cada evento precisa apontar pra uma Conversion Action já criada no painel.
- *    O mapa evento->ID vive em Workspace.google_conversion_actions (JSON).
- *  - gclid, wbraid e gbraid são MUTUAMENTE EXCLUSIVOS no payload.
+ * Desde set/2026 o upload usa a DATA MANAGER API (events:ingest), não mais o
+ * ConversionUploadService do Google Ads API: integrações novas são bloqueadas lá
+ * ("Usage of ConversionUploadService.UploadClickConversions is limited to
+ * existing users"). Diferenças herdadas da migração:
+ *  - NÃO precisa de developer token.
+ *  - Escopo OAuth é https://www.googleapis.com/auth/datamanager (não adwords) —
+ *    o refresh token tem que ter sido emitido com ele.
+ *  - operatingAccount = conta DONA da conversion action (a filha, não a MCC);
+ *    a MCC vai em loginAccount (equivale ao antigo login-customer-id).
+ *  - eventTimestamp é RFC-3339 normal (acabou o formato "yyyy-MM-dd HH:mm:ss±HH:mm").
+ *  - Não existe click_time no payload; a janela de 90d continua valendo do lado
+ *    do Google, então mantemos a checagem local pra falhar com mensagem clara.
+ *
+ * Igual antes:
+ *  - Credenciais em env, iguais pra todas as contas. Só google_ads_id e o mapa
+ *    evento->conversionActionId (Workspace.google_conversion_actions) são por workspace.
+ *  - gclid, wbraid e gbraid são MUTUAMENTE EXCLUSIVOS.
  */
 
-// v23 confirmado vivo em set/2026 (v18 e anteriores foram desativadas -> 404).
-// Alinhado com o painel adagency, que usa a mesma versao no mesmo host.
-const API_VERSION = 'v23';
+const INGEST_URL = 'https://datamanager.googleapis.com/v1/events:ingest';
 const OAUTH_URL = 'https://oauth2.googleapis.com/token';
 
 // Google recusa clique mais velho que isso (equivalente aos 7 dias da Meta).
 const MAX_CLICK_AGE_DAYS = 90;
 
 export interface GoogleAdsPayload {
-  customerId: string;              // ID da conta Ads, só dígitos (ex: 7259523207)
-  conversionActionId: string;      // ID numérico da Conversion Action
+  customerId: string;              // ID da conta Ads dona da conversion action, só dígitos
+  conversionActionId: string;      // ID numérico da Conversion Action (productDestinationId)
   gclid?: string | null;
   wbraid?: string | null;
   gbraid?: string | null;
@@ -34,29 +43,13 @@ export interface GoogleAdsPayload {
   eventTimeMs?: number | null;     // horário da conversão. Default: agora
   value?: number | null;
   currency?: string | null;
-  orderId?: string | null;         // dedupe: reenvio com mesmo orderId não duplica
+  orderId?: string | null;         // dedupe: vira transactionId
 }
 
 export interface GoogleAdsResult {
   ok: boolean;
   status: number;
-  response: string; // resource name (sucesso) ou corpo do erro
-}
-
-/**
- * "yyyy-MM-dd HH:mm:ss+HH:mm" no fuso da conta Ads. O Google recusa ISO-8601 puro
- * e recusa data sem offset. GOOGLE_ADS_TIMEZONE_OFFSET default -03:00 (Brasil).
- */
-function formatConversionDateTime(ms: number): string {
-  const offset = process.env.GOOGLE_ADS_TIMEZONE_OFFSET || '-03:00';
-  const sign = offset.startsWith('-') ? -1 : 1;
-  const [oh, om] = offset.slice(1).split(':').map(Number);
-  const shifted = new Date(ms + sign * (oh * 60 + om) * 60_000);
-  const p = (n: number) => String(n).padStart(2, '0');
-  return (
-    `${shifted.getUTCFullYear()}-${p(shifted.getUTCMonth() + 1)}-${p(shifted.getUTCDate())} ` +
-    `${p(shifted.getUTCHours())}:${p(shifted.getUTCMinutes())}:${p(shifted.getUTCSeconds())}${offset}`
-  );
+  response: string; // requestId (sucesso) ou corpo do erro
 }
 
 // Access token dura 1h; cacheia em memória pra não bater no OAuth a cada conversão.
@@ -109,7 +102,7 @@ export async function fireGoogleAdsConversion(payload: GoogleAdsPayload): Promis
   if (!cid) return { ok: false, status: 0, response: 'customerId vazio' };
 
   // Sem identificador de clique não há o que atribuir. Enhanced Conversions por
-  // e-mail/telefone hasheado é outro endpoint (uploadUserData) e não se aplica aqui.
+  // e-mail/telefone hasheado é userData/userProperties e não se aplica aqui.
   if (!gclid && !wbraid && !gbraid) {
     return { ok: false, status: 0, response: 'lead sem gclid/wbraid/gbraid — nada a enviar' };
   }
@@ -121,58 +114,54 @@ export async function fireGoogleAdsConversion(payload: GoogleAdsPayload): Promis
     }
   }
 
-  const conversion: Record<string, unknown> = {
-    conversionAction: `customers/${cid}/conversionActions/${conversionActionId}`,
-    conversionDateTime: formatConversionDateTime(eventTimeMs || Date.now()),
-  };
   // Exclusivos entre si — mandar dois faz o Google recusar o registro inteiro.
-  if (gclid) conversion.gclid = gclid;
-  else if (wbraid) conversion.wbraid = wbraid;
-  else if (gbraid) conversion.gbraid = gbraid;
+  const adIdentifiers: Record<string, string> = {};
+  if (gclid) adIdentifiers.gclid = gclid;
+  else if (wbraid) adIdentifiers.wbraid = wbraid;
+  else if (gbraid) adIdentifiers.gbraid = gbraid;
 
+  const event: Record<string, unknown> = {
+    adIdentifiers,
+    eventTimestamp: new Date(eventTimeMs || Date.now()).toISOString(),
+    eventSource: 'WEB',
+  };
   if (value != null) {
-    conversion.conversionValue = value;
-    conversion.currencyCode = currency || 'BRL';
+    event.conversionValue = value;
+    event.currency = currency || 'BRL';
   }
-  if (orderId) conversion.orderId = orderId.slice(0, 64);
+  if (orderId) event.transactionId = orderId.slice(0, 64);
 
-  const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
-  if (!developerToken) return { ok: false, status: 0, response: 'GOOGLE_ADS_DEVELOPER_TOKEN ausente no env' };
+  const destination: Record<string, unknown> = {
+    // Tem que ser a conta DONA da conversion action; MCC aqui dá erro de destino.
+    operatingAccount: { accountType: 'GOOGLE_ADS', accountId: cid },
+    productDestinationId: conversionActionId,
+  };
+  // Acesso via MCC: o antigo login-customer-id virou loginAccount.
+  const loginCustomerId = (process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID || '').replace(/\D/g, '');
+  if (loginCustomerId && loginCustomerId !== cid) {
+    destination.loginAccount = { accountType: 'GOOGLE_ADS', accountId: loginCustomerId };
+  }
 
   const accessToken = await getAccessToken();
 
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${accessToken}`,
-    'developer-token': developerToken,
-    'Content-Type': 'application/json',
-  };
-  // Conta filha sob MCC exige o ID do gerenciador no header, senão dá PERMISSION_DENIED.
-  const loginCustomerId = (process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID || '').replace(/\D/g, '');
-  if (loginCustomerId) headers['login-customer-id'] = loginCustomerId;
-
-  const url = `https://googleads.googleapis.com/${API_VERSION}/customers/${cid}:uploadClickConversions`;
-  const res = await fetch(url, {
+  const res = await fetch(INGEST_URL, {
     method: 'POST',
-    headers,
-    // partialFailure: um registro ruim não derruba o lote (aqui é 1, mas mantém
-    // o erro legível no corpo em vez de 400 seco).
-    body: JSON.stringify({ conversions: [conversion], partialFailure: true, validateOnly: process.env.GOOGLE_ADS_VALIDATE_ONLY === 'true' }),
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      destinations: [destination],
+      events: [event],
+      validateOnly: process.env.GOOGLE_ADS_VALIDATE_ONLY === 'true',
+    }),
   });
 
   const text = await res.text();
   if (!res.ok) return { ok: false, status: res.status, response: text.slice(0, 500) };
 
-  const json = JSON.parse(text) as {
-    partialFailureError?: { message?: string };
-    results?: Array<{ gclid?: string; conversionAction?: string }>;
-  };
-  // 200 com partialFailureError = o registro foi RECUSADO. Sem isso, erro de
-  // atribuição vira "sucesso" no painel de disparos e ninguém percebe.
-  if (json.partialFailureError) {
-    return { ok: false, status: res.status, response: String(json.partialFailureError.message || text).slice(0, 500) };
-  }
-
-  return { ok: true, status: res.status, response: json.results?.[0]?.conversionAction || 'ok' };
+  const json = JSON.parse(text) as { requestId?: string };
+  return { ok: true, status: res.status, response: json.requestId || 'ok' };
 }
 
 /** Hash usado se algum dia ligarmos Enhanced Conversions for Leads (telefone/e-mail). */
