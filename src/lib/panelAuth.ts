@@ -33,14 +33,14 @@ export async function fetchAuthConfig(): Promise<{ auth_required: boolean }> {
   return res.json();
 }
 
-export async function loginWithPassword(password: string) {
+export async function loginWithPassword(password: string, username = '') {
   const res = await fetch(`${API_BASE}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ password }),
+    body: JSON.stringify({ username, password }),
   });
 
-  if (res.status === 401) throw new Error('Senha invalida');
+  if (res.status === 401) throw new Error('Usuario ou senha invalidos');
   if (!res.ok) throw new Error(`Login falhou: ${res.status}`);
 
   const { token } = await res.json();

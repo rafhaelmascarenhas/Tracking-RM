@@ -27,7 +27,7 @@ export function Login() {
 
     try {
       if (passwordOnly) {
-        await loginWithPassword(password);
+        await loginWithPassword(password, email);
         window.location.href = '/dashboard';
         return;
       }
@@ -63,6 +63,19 @@ export function Login() {
         </CardHeader>
         <form onSubmit={handleAuth}>
           <CardContent className="space-y-4">
+            {passwordOnly && (
+              <div className="space-y-2">
+                <Label htmlFor="username">Usuário</Label>
+                <Input
+                  id="username"
+                  autoComplete="username"
+                  placeholder="deixe em branco se usa só a senha"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoFocus
+                />
+              </div>
+            )}
             {!passwordOnly && (
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
@@ -84,7 +97,6 @@ export function Login() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                autoFocus={passwordOnly}
               />
             </div>
             {error && <p className="text-sm text-red-500">{error}</p>}

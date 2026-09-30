@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { timingSafeEqual } from 'crypto';
 import { SignJWT } from 'jose';
-import { PANEL_JWT_SECRET, PANEL_PASSWORD, PANEL_WORKSPACE_ID, authEnabled } from '../lib/panelAuth';
+import { PANEL_JWT_SECRET, PANEL_PASSWORD, PANEL_USERS, PANEL_WORKSPACE_ID, authEnabled } from '../lib/panelAuth';
 
 export const authRouter = Router();
 
@@ -18,20 +18,23 @@ function passwordMatches(sent: string, expected: string) {
   return timingSafeEqual(a, b);
 }
 
-// Painel single-tenant: uma senha compartilhada troca por um JWT de 30 dias.
+// Painel single-tenant: senha compartilhada (usuario em branco) ou login nomeado
+// de PANEL_USERS troca por um JWT de 30 dias. Todos caem no mesmo workspace.
 authRouter.post('/login', async (req, res) => {
   if (!authEnabled()) {
     return res.status(503).json({ error: 'Auth nao configurada no servidor' });
   }
 
+  const username = typeof req.body?.username === 'string' ? req.body.username.trim().toLowerCase() : '';
   const password = typeof req.body?.password === 'string' ? req.body.password : '';
-  if (!password || !passwordMatches(password, PANEL_PASSWORD())) {
-    return res.status(401).json({ error: 'Senha invalida' });
+  const expected = username ? PANEL_USERS().get(username) ?? '' : PANEL_PASSWORD();
+  if (!password || !expected || !passwordMatches(password, expected)) {
+    return res.status(401).json({ error: 'Usuario ou senha invalidos' });
   }
 
   const token = await new SignJWT({ workspace_id: PANEL_WORKSPACE_ID })
     .setProtectedHeader({ alg: 'HS256' })
-    .setSubject('panel-user')
+    .setSubject(username || 'panel-user')
     .setIssuedAt()
     .setExpirationTime('30d')
     .sign(PANEL_JWT_SECRET());
